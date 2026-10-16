@@ -35,13 +35,19 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api_responses import ADMIN_RESPONSES
 from app.db import get_db_session
 from app.db.models import User as UserRow
 from app.openapi import TAG_ADMIN_USERS
 from app.passwords import hash_password
 from app.security import require_admin
 
-router = APIRouter(prefix="/api/admin/users", tags=[TAG_ADMIN_USERS], dependencies=[Depends(require_admin)])
+router = APIRouter(
+    prefix="/api/admin/users",
+    tags=[TAG_ADMIN_USERS],
+    dependencies=[Depends(require_admin)],
+    responses=ADMIN_RESPONSES,
+)
 
 _ROLES = {"admin", "user"}
 

@@ -33,6 +33,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 
 from app import identity
 from app.a2a_client import A2AClient
+from app.api_responses import AUTH_RESPONSES
 from app.config import settings
 from app.contract import UploadDescriptor
 from app.openapi import TAG_UPLOADS
@@ -42,7 +43,7 @@ from app.sessions import get_store
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api", tags=[TAG_UPLOADS])
+router = APIRouter(prefix="/api", tags=[TAG_UPLOADS], responses=AUTH_RESPONSES)
 
 _CHUNK_SIZE = 1024 * 1024
 

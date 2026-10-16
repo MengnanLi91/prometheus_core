@@ -44,6 +44,7 @@ from typing import Any, Optional, cast
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, status as http_status
 
+from app.api_responses import AUTH_RESPONSES
 from app.config import settings
 from app.contract import (
     ConversationDetailResponse,
@@ -66,7 +67,7 @@ from app.task_events import build_task_tree
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api", tags=[TAG_CONVERSATIONS])
+router = APIRouter(prefix="/api", tags=[TAG_CONVERSATIONS], responses=AUTH_RESPONSES)
 
 
 # One client reused across requests (AU-7): ConversationStateClient caches its Redis
