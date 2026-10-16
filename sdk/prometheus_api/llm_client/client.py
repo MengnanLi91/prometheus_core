@@ -27,9 +27,11 @@ from .exceptions import (
     LLMAliasError,
     LLMClientError,
     LLMEndpointUnavailableError,
+    LLMProviderError,
     LLMToolCallError,
 )
 from .models import ChatResponse, EmbeddingResponse
+from .provider_errors import format_provider_error, litellm_error_body, summarize_body
 from .normalization import ChatInput, EmbeddingInput, normalize_embedding_input, normalize_messages
 from .security import extract_llm_api_key_from_a2a_context, redact_secrets
 from .tools import (
@@ -204,6 +206,58 @@ class _ClientMixin:
             f"({self.config.describe_source()}): {_failure_reason(cause)}.\n"
             "Check that the endpoint is up and reachable from this host (VPN or proxy "
             "settings), or select another profile with LLM_CONFIG_PROFILE."
+        ) from exc
+
+    def _provider_error(
+        self,
+        *,
+        status_code: int,
+        body: Any,
+        endpoint: str | None,
+        alias: str | None,
+        provider_model: str | None,
+    ) -> LLMProviderError:
+        detail = summarize_body(body)
+        return LLMProviderError(
+            format_provider_error(
+                status_code=status_code,
+                detail=detail,
+                source=self.config.describe_source(),
+                endpoint=endpoint,
+                alias=alias,
+                provider_model=provider_model,
+            ),
+            status_code=status_code,
+            detail=detail,
+            endpoint=endpoint,
+            alias=alias,
+            provider_model=provider_model,
+        )
+
+    def _check_proxy_response(self, response: httpx.Response, alias: str | None) -> None:
+        """Raise ``LLMProviderError`` for a proxy HTTP error, with the proxy's own message."""
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            raise self._provider_error(
+                status_code=response.status_code,
+                body=response.content,
+                endpoint=str(response.request.url),
+                alias=alias,
+                provider_model=None,
+            ) from exc
+
+    def _raise_if_provider_error(self, fallback_model: FallbackModelConfig, exc: Exception) -> None:
+        """Translate a LiteLLM HTTP error; leave every other error to the caller."""
+        status_code = getattr(exc, "status_code", None)
+        if not isinstance(status_code, int) or status_code < 400:
+            return
+        raise self._provider_error(
+            status_code=status_code,
+            body=litellm_error_body(exc),
+            endpoint=fallback_model.litellm_params.get("api_base"),
+            alias=fallback_model.alias,
+            provider_model=fallback_model.provider_model,
         ) from exc
 
     def _proxy_headers(self, api_key: Any = None) -> dict[str, str]:
@@ -664,9 +718,9 @@ class LLMClient(_ClientMixin):
         url = f"{self.config.proxy_url.rstrip('/')}/v1/models"
         try:
             response = self.http_client.get(url, headers=self._proxy_headers())
-            response.raise_for_status()
         except httpx.RequestError as exc:
             raise _ProxyUnavailableError(str(exc)) from exc
+        self._check_proxy_response(response, None)
         aliases = _extract_proxy_aliases(response.json())
         self._proxy_aliases_cache = aliases
         return list(aliases)
@@ -687,9 +741,9 @@ class LLMClient(_ClientMixin):
                 json=payload,
                 headers=self._proxy_headers(api_key),
             )
-            response.raise_for_status()
         except httpx.RequestError as exc:
             raise _ProxyUnavailableError(str(exc)) from exc
+        self._check_proxy_response(response, alias)
         return response.json()
 
     def _proxy_embedding(
@@ -708,9 +762,9 @@ class LLMClient(_ClientMixin):
                 json=payload,
                 headers=self._proxy_headers(api_key),
             )
-            response.raise_for_status()
         except httpx.RequestError as exc:
             raise _ProxyUnavailableError(str(exc)) from exc
+        self._check_proxy_response(response, alias)
         return response.json()
 
     def _fallback_chat(
@@ -729,6 +783,7 @@ class LLMClient(_ClientMixin):
             )
         except Exception as exc:
             self._raise_if_unreachable(fallback_model, exc)
+            self._raise_if_provider_error(fallback_model, exc)
             raise
 
     def _fallback_embedding(
@@ -747,6 +802,7 @@ class LLMClient(_ClientMixin):
             )
         except Exception as exc:
             self._raise_if_unreachable(fallback_model, exc)
+            self._raise_if_provider_error(fallback_model, exc)
             raise
 
 
@@ -959,9 +1015,9 @@ class AsyncLLMClient(_ClientMixin):
         url = f"{self.config.proxy_url.rstrip('/')}/v1/models"
         try:
             response = await self.http_client.get(url, headers=self._proxy_headers())
-            response.raise_for_status()
         except httpx.RequestError as exc:
             raise _ProxyUnavailableError(str(exc)) from exc
+        self._check_proxy_response(response, None)
         aliases = _extract_proxy_aliases(response.json())
         self._proxy_aliases_cache = aliases
         return list(aliases)
@@ -982,9 +1038,9 @@ class AsyncLLMClient(_ClientMixin):
                 json=payload,
                 headers=self._proxy_headers(api_key),
             )
-            response.raise_for_status()
         except httpx.RequestError as exc:
             raise _ProxyUnavailableError(str(exc)) from exc
+        self._check_proxy_response(response, alias)
         return response.json()
 
     async def _proxy_embedding(
@@ -1003,9 +1059,9 @@ class AsyncLLMClient(_ClientMixin):
                 json=payload,
                 headers=self._proxy_headers(api_key),
             )
-            response.raise_for_status()
         except httpx.RequestError as exc:
             raise _ProxyUnavailableError(str(exc)) from exc
+        self._check_proxy_response(response, alias)
         return response.json()
 
     async def _fallback_chat(
@@ -1024,6 +1080,7 @@ class AsyncLLMClient(_ClientMixin):
             )
         except Exception as exc:
             self._raise_if_unreachable(fallback_model, exc)
+            self._raise_if_provider_error(fallback_model, exc)
             raise
 
     async def _fallback_embedding(
@@ -1042,4 +1099,5 @@ class AsyncLLMClient(_ClientMixin):
             )
         except Exception as exc:
             self._raise_if_unreachable(fallback_model, exc)
+            self._raise_if_provider_error(fallback_model, exc)
             raise

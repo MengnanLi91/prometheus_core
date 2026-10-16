@@ -27,6 +27,7 @@ Let applications select LLM models through stable aliases while using an explici
 - REQ-005-17: `LLMConfig.from_env(...)` MUST load `LLM_CONFIG_FILE`, `LLM_CONFIG_PROFILE`, `LLM_DEBUG_LOG_MESSAGES`, and `ENABLE_MLFLOW_TRACING`, trim string selectors, and convert truthy flag strings from `1`, `true`, `yes`, or `on`.
 - REQ-005-18: An unknown `LLM_CONFIG_PROFILE`, a missing config file, or a non-mapping config file MUST raise `LLMConfigError` (an `LLMClientError` and `ValueError`) naming the selector or path; for an unknown profile the message MUST list the installed profiles.
 - REQ-005-19: When an LLM endpoint cannot be reached the client MUST raise `LLMEndpointUnavailableError` naming the endpoint (proxy URL, or the alias's `api_base`), the alias where applicable, the selected profile or config file, and the transport error. Provider responses that are not connection failures MUST NOT be reported as unreachable.
+- REQ-005-20: An HTTP error status from the proxy or from a direct provider call MUST raise `LLMProviderError` carrying `status_code`, `detail`, `endpoint`, `alias` and `provider_model`. Its message MUST give the status and reason phrase, the alias, the selected profile or config file, the endpoint, and a one-line provider detail: the `error.message`/`type`/`code` (or `detail`) of a JSON body, the title of an HTML page, or plain text clipped to 300 characters, with secrets and bearer tokens redacted. The original exception MUST be kept as `__cause__`.
 
 ## Behavior
 - BEH-005-01: Retired. Agent code owns flavor selection and chat without an explicit model always requests `default`.
@@ -48,6 +49,7 @@ Let applications select LLM models through stable aliases while using an explici
 - `LLMAliasError`
 - `LLMConfigError`
 - `LLMEndpointUnavailableError`
+- `LLMProviderError`
 
 ## Constraints
 - The selected YAML determines whether the primary path is a proxy (`proxy_url`) or direct provider aliases (`model_list`). A file containing both keeps direct aliases as a degraded path used only when proxy discovery or calls fail with request-level unavailability.
