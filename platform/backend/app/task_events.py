@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, AsyncIterator, Dict, Optional
+from typing import Any, AsyncIterator, Dict, List, Optional
 
 from app.redis_client import RedisClient, close_pubsub
 
@@ -47,6 +47,14 @@ def _node_key(conversation_id: str, task_id: str) -> str:
 
 def _result_key(conversation_id: str, task_id: str) -> str:
     return f"tasks:result:{conversation_id}:{task_id}"
+
+
+def _graph_key(conversation_id: str) -> str:
+    return f"tasks:graph:{conversation_id}"
+
+
+def _roots_key(conversation_id: str) -> str:
+    return f"tasks:roots:{conversation_id}"
 
 
 def is_terminal(state: Optional[str]) -> bool:
@@ -92,6 +100,62 @@ async def node_state(redis: RedisClient, conversation_id: str, task_id: str) -> 
     """Return only the current persisted state of a Task Graph node."""
     node = await node_snapshot(redis, conversation_id, task_id)
     return str(node.get("state")) if node else None
+
+
+async def list_graph_nodes(redis: RedisClient, conversation_id: str) -> Dict[str, Dict[str, Any]]:
+    """Return every persisted Task Graph node of a conversation, keyed by task id.
+
+    One ``SMEMBERS`` plus one ``MGET``. A missing (expired) or corrupt node is skipped.
+    Unlike :func:`node_snapshot`, a Valkey failure propagates, so the caller can tell
+    "Valkey is down" apart from "no tasks".
+    """
+    task_ids = sorted(str(tid) for tid in await redis.smembers(_graph_key(conversation_id)))
+    if not task_ids:
+        return {}
+    blobs = await redis.mget([_node_key(conversation_id, tid) for tid in task_ids])
+    nodes: Dict[str, Dict[str, Any]] = {}
+    for tid, data in zip(task_ids, blobs):
+        if not data:
+            continue
+        try:
+            node = json.loads(data)
+        except Exception:
+            logger.warning("[TASKEVENTS] Corrupt task node %s/%s", conversation_id, tid)
+            continue
+        if isinstance(node, dict):
+            nodes[str(node.get("task_id") or tid)] = node
+    return nodes
+
+
+async def build_task_tree(redis: RedisClient, conversation_id: str) -> List[Dict[str, Any]]:
+    """Return a conversation's root task nodes, each with its ``children`` nested.
+
+    An async port of the client-agent's ``task_graph.build_tree``
+    (agents/client-agent/task_graph.py), which backs the ``/tasks`` slash command;
+    keep the two in step. Roots come from ``tasks:roots:{conv}`` in creation order,
+    then any node with no parent that the list misses, so nothing is hidden. A node
+    is rendered at most once, which also stops a corrupt parent/child cycle.
+    """
+    nodes = await list_graph_nodes(redis, conversation_id)
+    if not nodes:
+        return []
+    root_ids = [str(r) for r in await redis.lrange(_roots_key(conversation_id), 0, -1)]
+
+    seen: set[str] = set()
+
+    def render(task_id: str) -> Optional[Dict[str, Any]]:
+        if task_id in seen or task_id not in nodes:
+            return None
+        seen.add(task_id)
+        node = nodes[task_id]
+        return {
+            **node,
+            "children": [child for cid in node.get("child_task_ids") or [] if (child := render(str(cid))) is not None],
+        }
+
+    roots = [r for r in root_ids if r in nodes]
+    roots += [tid for tid, n in nodes.items() if not n.get("parent_task_id") and tid not in roots]
+    return [tree for r in roots if (tree := render(r)) is not None]
 
 
 async def subscribe(redis: RedisClient, conversation_id: str) -> AsyncIterator[Dict[str, Any]]:
