@@ -211,8 +211,8 @@ the agent as A2A message metadata `inputSources`.
 
 Sensitive answers reach only the resumed invocation: they are never written to the
 arguments, context, `inputs`, or transcript (their name still appears in
-`input_sources`). For now the resume also repeats the answers in a `provided_inputs` data
-part, for agents that still read `get_provided_inputs()`; that channel is being retired.
+`input_sources`). Agents read every input from `params` and the sources with
+`PrometheusAgent.get_input_sources(context)`; there is no separate provided-inputs data part.
 
 Artifacts produced by a call are merged into `context.artifacts` right away, so the next
 call's artifact references validate. The full raw result is kept in `turn_tool_results`

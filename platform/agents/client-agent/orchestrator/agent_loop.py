@@ -755,7 +755,7 @@ def apply_answers(
                     context[name] = value
                     call["arguments"][name] = value
             if provided:
-                call["provided_inputs"] = provided
+                call["pending_answers"] = provided
                 call["status"] = "resume"
 
 
@@ -940,11 +940,7 @@ async def _settle_skill_item(
             params = _invocation_params(call, state)
             resumed = await invoke_skill(
                 skill_id,
-                {
-                    **params,
-                    "provided_inputs": resolved,
-                    **_a2a_resume_fields(_blocked_record(skill_id, item, [], None)),
-                },
+                {**params, **_a2a_resume_fields(_blocked_record(skill_id, item, [], None))},
                 conversation_id,
                 emit_status=False,
             )
@@ -975,10 +971,10 @@ async def _run_skill(call: Dict[str, Any], state: Dict[str, Any]) -> None:
     params = _invocation_params(call, state)
     conversation_id = str(state.get("conversation_id") or "")
     if call["status"] == "resume":
-        provided = call.pop("provided_inputs", {})
+        provided = call.pop("pending_answers", {})
         item = await invoke_skill(
             call["target"],
-            {**params, **provided, "provided_inputs": provided, **_a2a_resume_fields(call)},
+            {**params, **provided, **_a2a_resume_fields(call)},
             conversation_id,
         )
     else:
@@ -999,7 +995,7 @@ async def _run_workflow(call: Dict[str, Any], state: Dict[str, Any]) -> None:
     if call["status"] == "resume":
         # Finish the blocked specialist tasks first, then continue the template
         # from where it stopped. Non-sensitive answers also reach later steps.
-        provided = call.pop("provided_inputs", {})
+        provided = call.pop("pending_answers", {})
         sensitive = {str(item.get("name") or "") for item in call.get("missing_inputs") or [] if item.get("sensitive")}
         still_blocked: List[Dict[str, Any]] = []
         for record in call.get("blocked_steps") or []:
@@ -1015,7 +1011,6 @@ async def _run_workflow(call: Dict[str, Any], state: Dict[str, Any]) -> None:
                     **step_params,
                     **step_inputs,
                     "_input_sources": {**sources, **{name: "user" for name in step_inputs}},
-                    "provided_inputs": step_inputs,
                     **_a2a_resume_fields(record),
                 },
                 conversation_id,

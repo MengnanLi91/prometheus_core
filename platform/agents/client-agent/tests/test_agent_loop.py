@@ -724,7 +724,9 @@ def test_specialist_input_required_resumes_the_same_task(harness) -> None:
 
     assert second.status == "completed"
     resume_params = harness.invocations[1][1]
-    assert resume_params["provided_inputs"] == {"units": "SI"}
+    assert resume_params["units"] == "SI"
+    assert resume_params["_input_sources"]["units"] == "user"
+    assert "provided_inputs" not in resume_params
     assert resume_params["_a2a_task_id"] == "task-1"
     assert resume_params["_a2a_context_id"] == "ctx-1"
     assert resume_params["_task_graph_node_id"] == "node-1"
@@ -771,7 +773,6 @@ def test_specialist_form_answers_are_recorded_and_shown_to_the_model(harness) ->
 
     assert response.status == "completed"
     resumed = harness.invocations[1][1]
-    assert resumed["provided_inputs"] == {"rod_diameter_mm": 9.5, "api_token": "s3cret"}
     # Answers are merged into the params the agent receives, sensitive ones included.
     assert (resumed["rod_diameter_mm"], resumed["api_token"]) == (9.5, "s3cret")
     recorded = harness.store[CONV]["conversation_history"][-1]["tool_inputs"]["analyze_thermal"]
@@ -1324,10 +1325,8 @@ def test_workflow_input_required_resumes_each_blocked_step(harness, monkeypatch)
     second = send(followup_answers={"units": "SI", "color": "red"})
     # Each blocked task gets only its own inputs, on its own A2A task.
     resumed = {skill: params for skill, params in harness.invocations}
-    assert resumed["analyze_thermal"]["provided_inputs"] == {"units": "SI"}
     assert resumed["analyze_thermal"]["_a2a_task_id"] == "task-thermal"
     assert resumed["analyze_thermal"]["_a2a_context_id"] == "ctx-thermal"
-    assert resumed["create_svg_artifact"]["provided_inputs"] == {"color": "red"}
     # Answers are merged into each step's params, but never a sibling's answer.
     assert resumed["analyze_thermal"]["units"] == "SI" and "color" not in resumed["analyze_thermal"]
     assert resumed["create_svg_artifact"]["color"] == "red" and "units" not in resumed["create_svg_artifact"]
@@ -1342,7 +1341,7 @@ def test_workflow_input_required_resumes_each_blocked_step(harness, monkeypatch)
     third = send(followup_answers={"word": "x"})
 
     last_skill, last_params = harness.invocations[-1]
-    assert (last_skill, last_params["provided_inputs"]) == ("create_svg_artifact", {"word": "x"})
+    assert (last_skill, last_params["word"]) == ("create_svg_artifact", "x")
     assert last_params["_a2a_task_id"] == "task-svg-2"
     assert third.status == "completed"
     # The template continues past both finished steps instead of running them again.
@@ -1423,7 +1422,7 @@ def test_resumed_workflow_continues_without_rerunning_finished_steps(harness, mo
     # The SVG step ran once; the thermal step was resumed on its own task, not restarted.
     assert [skill for skill, _ in harness.invocations] == ["create_svg_artifact", "analyze_thermal", "analyze_thermal"]
     resumed = harness.invocations[-1][1]
-    assert (resumed["_a2a_task_id"], resumed["provided_inputs"]) == ("task-thermal", {"units": "SI"})
+    assert (resumed["_a2a_task_id"], resumed["units"]) == ("task-thermal", "SI")
     assert [a["artifact_id"] for a in harness.store[CONV]["context"]["artifacts"]] == ["svg-1"]
     # Each step records the inputs it was actually given.
     report = harness.store[CONV]["conversation_history"][-1]
@@ -1483,8 +1482,8 @@ def test_a_sensitive_workflow_answer_reaches_only_its_step(harness, monkeypatch)
     response = send(followup_answers={"dpi": 300})
 
     assert response.status == "completed"
-    tokens = [params.get("provided_inputs") for skill, params in harness.invocations if skill == "analyze_thermal"]
-    assert tokens == [None, {"api_token": "s3cret-token"}]
+    tokens = [params.get("api_token") for skill, params in harness.invocations if skill == "analyze_thermal"]
+    assert tokens == [None, "s3cret-token"]
     assert "s3cret-token" not in json.dumps(harness.invocations[-2:])  # later steps never see it
     assert "s3cret-token" not in json.dumps(harness.store[CONV])
     assert "s3cret-token" not in llm.requests[0]["messages"][0]["content"]
