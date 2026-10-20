@@ -750,7 +750,13 @@ def test_specialist_form_answers_are_recorded_and_shown_to_the_model(harness) ->
 
     def sees_inputs(request):
         content = json.loads(request["messages"][-1]["content"])
-        assert content["provided_inputs"] == {"rod_diameter_mm": 9.5}  # never the sensitive value
+        assert content["inputs"] == {"material_id": "SS316", "temperature_c": 500, "rod_diameter_mm": 9.5}
+        assert content["input_sources"] == {
+            "material_id": "model",
+            "temperature_c": "model",
+            "rod_diameter_mm": "user",
+            "api_token": "user",
+        }  # the sensitive value itself is never shown
         return reply("Analysis complete.")
 
     harness.script(
@@ -764,10 +770,79 @@ def test_specialist_form_answers_are_recorded_and_shown_to_the_model(harness) ->
     response = send(followup_answers={"rod_diameter_mm": "9.5", "api_token": "s3cret"})
 
     assert response.status == "completed"
-    assert harness.invocations[1][1]["provided_inputs"] == {"rod_diameter_mm": 9.5, "api_token": "s3cret"}
+    resumed = harness.invocations[1][1]
+    assert resumed["provided_inputs"] == {"rod_diameter_mm": 9.5, "api_token": "s3cret"}
+    # Answers are merged into the params the agent receives, sensitive ones included.
+    assert (resumed["rod_diameter_mm"], resumed["api_token"]) == (9.5, "s3cret")
     recorded = harness.store[CONV]["conversation_history"][-1]["tool_inputs"]["analyze_thermal"]
     assert recorded == {"material_id": "SS316", "temperature_c": 500, "rod_diameter_mm": 9.5}
     assert "s3cret" not in json.dumps(harness.store[CONV]["llm_messages"])
+
+
+def test_input_sources_distinguish_model_user_and_context(harness) -> None:
+    replies = iter(
+        [
+            {
+                "input_required": {
+                    "missing_inputs": [{"name": "units", "type": "string", "resolvable_from_context": True}],
+                },
+                "_a2a_task_id": "task-1",
+            },
+            {
+                "input_required": {"missing_inputs": [{"name": "mesh", "type": "enum", "options": ["fine", "coarse"]}]},
+                "_a2a_task_id": "task-1",
+            },
+            {"result": {"answer": "Done in SI."}},
+        ]
+    )
+    harness.results.update(analyze_thermal=lambda params: next(replies))
+    model_args = {"material_id": "SS316", "temperature_c": 500}
+
+    def sees_sources(request):
+        content = json.loads(request["messages"][-1]["content"])
+        assert content["inputs"] == {**model_args, "units": "SI", "mesh": "fine"}
+        assert content["input_sources"] == {
+            "material_id": "model",
+            "temperature_c": "model",
+            "units": "context",
+            "mesh": "user",
+        }
+        return reply("Analysis complete.")
+
+    harness.script([reply(calls=[tool_call("analyze_thermal", model_args, "c1")]), sees_sources])
+    harness.store[CONV] = {"context": {"units": "SI"}}
+
+    first = send(query="Analyze SS316 at 500 C")
+    assert first.status == "needs_info"
+    assert [q["field"] for q in first.followup_questions] == ["mesh"]
+
+    response = send(followup_answers={"mesh": "fine"})
+
+    assert response.status == "completed"
+    filled, answered = harness.invocations[1][1], harness.invocations[2][1]
+    assert filled["units"] == "SI"
+    assert filled["_input_sources"] == {"material_id": "model", "temperature_c": "model", "units": "context"}
+    assert (answered["units"], answered["mesh"]) == ("SI", "fine")
+    assert answered["_input_sources"]["mesh"] == "user"
+
+
+def test_tool_result_omits_sources_when_the_model_supplied_everything(harness) -> None:
+    harness.results.update(analyze_thermal=lambda params: {"result": {"answer": "Done."}})
+
+    def sees_plain_result(request):
+        content = json.loads(request["messages"][-1]["content"])
+        assert "inputs" not in content and "input_sources" not in content
+        return reply("Analysis complete.")
+
+    harness.script(
+        [
+            reply(calls=[tool_call("analyze_thermal", {"material_id": "SS316", "temperature_c": 500}, "c1")]),
+            sees_plain_result,
+        ]
+    )
+
+    assert send(query="Analyze SS316 at 500 C").status == "completed"
+    assert harness.invocations[0][1]["_input_sources"] == {"material_id": "model", "temperature_c": "model"}
 
 
 def test_ask_user_accepts_a_free_text_answer(harness) -> None:
@@ -1253,6 +1328,11 @@ def test_workflow_input_required_resumes_each_blocked_step(harness, monkeypatch)
     assert resumed["analyze_thermal"]["_a2a_task_id"] == "task-thermal"
     assert resumed["analyze_thermal"]["_a2a_context_id"] == "ctx-thermal"
     assert resumed["create_svg_artifact"]["provided_inputs"] == {"color": "red"}
+    # Answers are merged into each step's params, but never a sibling's answer.
+    assert resumed["analyze_thermal"]["units"] == "SI" and "color" not in resumed["analyze_thermal"]
+    assert resumed["create_svg_artifact"]["color"] == "red" and "units" not in resumed["create_svg_artifact"]
+    assert resumed["analyze_thermal"]["_input_sources"]["units"] == "user"
+    assert "color" not in resumed["analyze_thermal"]["_input_sources"]
     assert resumed["create_svg_artifact"]["_a2a_task_id"] == "task-svg"
     # The SVG step is still blocked, so the template does not continue yet.
     assert second.status == "needs_info"

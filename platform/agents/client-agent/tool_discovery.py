@@ -456,6 +456,10 @@ async def call_a2a_agent(
     # Propagate the current user's identity token alongside the skillId so that
     # downstream specialist agents can verify who is calling them.
     message_metadata: Dict[str, Any] = {"skillId": skill_id}
+    # Who supplied each parameter: "model" (the orchestrator's tool call),
+    # "user" (a form answer), or "context" (filled from the conversation).
+    if kwargs.get("_input_sources"):
+        message_metadata["inputSources"] = dict(kwargs["_input_sources"])
     try:
         from prometheus_api.agent.identity import (
             get_current_identity,
