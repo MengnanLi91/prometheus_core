@@ -102,16 +102,21 @@ async def node_state(redis: RedisClient, conversation_id: str, task_id: str) -> 
     return str(node.get("state")) if node else None
 
 
-async def list_graph_nodes(redis: RedisClient, conversation_id: str) -> Dict[str, Dict[str, Any]]:
-    """Return every persisted Task Graph node of a conversation, keyed by task id.
+async def _read_graph(redis: RedisClient, conversation_id: str) -> tuple[Dict[str, Dict[str, Any]], List[str]]:
+    """Return a conversation's Task Graph nodes (keyed by task id) and its root ids.
 
-    One ``SMEMBERS`` plus one ``MGET``. A missing (expired) or corrupt node is skipped.
-    Unlike :func:`node_snapshot`, a Valkey failure propagates, so the caller can tell
-    "Valkey is down" apart from "no tasks".
+    Two round trips: ``SMEMBERS`` + ``LRANGE`` in one pipeline, then ``MGET``.
+    A missing (expired) or corrupt node is skipped. Unlike :func:`node_snapshot`, a
+    Valkey failure propagates, so the caller can tell "Valkey is down" apart from
+    "no tasks".
     """
-    task_ids = sorted(str(tid) for tid in await redis.smembers(_graph_key(conversation_id)))
+    async with redis.pipeline(transaction=False) as pipe:
+        pipe.smembers(_graph_key(conversation_id))
+        pipe.lrange(_roots_key(conversation_id), 0, -1)
+        members, root_ids = await pipe.execute()
+    task_ids = sorted(str(tid) for tid in members)
     if not task_ids:
-        return {}
+        return {}, []
     blobs = await redis.mget([_node_key(conversation_id, tid) for tid in task_ids])
     nodes: Dict[str, Dict[str, Any]] = {}
     for tid, data in zip(task_ids, blobs):
@@ -124,7 +129,7 @@ async def list_graph_nodes(redis: RedisClient, conversation_id: str) -> Dict[str
             continue
         if isinstance(node, dict):
             nodes[str(node.get("task_id") or tid)] = node
-    return nodes
+    return nodes, [str(r) for r in root_ids]
 
 
 async def build_task_tree(redis: RedisClient, conversation_id: str) -> List[Dict[str, Any]]:
@@ -136,10 +141,9 @@ async def build_task_tree(redis: RedisClient, conversation_id: str) -> List[Dict
     then any node with no parent that the list misses, so nothing is hidden. A node
     is rendered at most once, which also stops a corrupt parent/child cycle.
     """
-    nodes = await list_graph_nodes(redis, conversation_id)
+    nodes, root_ids = await _read_graph(redis, conversation_id)
     if not nodes:
         return []
-    root_ids = [str(r) for r in await redis.lrange(_roots_key(conversation_id), 0, -1)]
 
     seen: set[str] = set()
 

@@ -612,6 +612,19 @@ def test_delete_soft_hides_without_touching_the_conversation_document(monkeypatc
     assert fake.get_conversation("c1") == {"user_query": "hi"}  # untouched
 
 
+def test_owned_conversation_with_empty_meta_is_found(monkeypatch, session_store):
+    # Never renamed or deleted: the conv:meta hash is empty, and ``{}`` is falsy.
+    # _owned_meta signals a miss with None, so the routes must not treat {} as one.
+    conv = {"user_query": "hi", "conversation_history": [{"role": "user", "content": "hi"}]}
+    fake = _detail_client(monkeypatch, conversations={"c1": conv}, owners={"c1": "alice"})
+    client = _authed_client(monkeypatch)
+    assert fake.get_meta("c1") == {}
+
+    assert client.get("/api/conversations/c1").status_code == 200
+    assert client.post("/api/conversations/c1/resume").status_code == 200
+    assert client.get("/api/conversations/c1/tasks").status_code == 200
+
+
 def test_soft_deleted_conversation_is_not_found_for_detail_or_resume(monkeypatch, session_store):
     # A tab that still remembers a deleted conversation's id must not reopen it on
     # reload, or the next turn is appended to a conversation the user deleted.

@@ -109,6 +109,21 @@ async def get_recent_conversations(
     )
 
 
+def _owned_meta(conv_id: str, user_id: str) -> dict[str, Any] | None:
+    """Blocking ownership check, run in a worker thread: the conversation's
+    ``conv:meta`` hash when *user_id* owns it and it isn't soft-deleted, else ``None``
+    (also when Redis is down) -- callers map ``None`` uniformly to 404.
+
+    Compare with ``is None``: a conversation that was never renamed or deleted has an
+    empty meta hash, and ``{}`` is falsy.
+    """
+    client = _client()
+    if not client.available or not client.owns(user_id, conv_id):
+        return None
+    meta = client.get_meta(conv_id)
+    return None if meta.get("hidden") else meta
+
+
 def _fetch_detail_parts(conv_id: str, user_id: str) -> tuple[bool, dict[str, Any] | None]:
     """Blocking ownership check + raw store reads, run in a worker thread.
 
@@ -123,12 +138,10 @@ def _fetch_detail_parts(conv_id: str, user_id: str) -> tuple[bool, dict[str, Any
     because mesh enrichment (:func:`_build_detail`) is async and must run on the event
     loop, not in this thread.
     """
+    meta = _owned_meta(conv_id, user_id)
+    if meta is None:
+        return False, None
     client = _client()
-    if not client.available or not client.owns(user_id, conv_id):
-        return False, None
-    meta = client.get_meta(conv_id)
-    if meta.get("hidden"):
-        return False, None
     conv = client.get_conversation(conv_id) or {}
     return True, {
         "title": meta.get("title_override") or conv.get("title") or conv.get("user_query", ""),
@@ -185,15 +198,6 @@ async def get_conversation_detail(
     return await _build_detail(conversation_id, parts)
 
 
-def _owns_visible(conv_id: str, user_id: str) -> bool:
-    """Blocking ownership check, run in a worker thread: owned and not soft-deleted.
-    ``False`` when Redis is down too -- the caller maps every miss to 404."""
-    client = _client()
-    if not client.available or not client.owns(user_id, conv_id):
-        return False
-    return not client.get_meta(conv_id).get("hidden")
-
-
 @router.get("/conversations/{conversation_id}/tasks", response_model=ConversationTasksResponse)
 async def get_conversation_tasks(
     conversation_id: str,
@@ -203,7 +207,7 @@ async def get_conversation_tasks(
     """The conversation's background-task tree (the client-agent's Task Graph) as
     JSON: the structured form of the ``/tasks`` slash command. Running and finished
     tasks alike, root turns newest first, each with its skill dispatches nested."""
-    if not await asyncio.to_thread(_owns_visible, conversation_id, claims.sub):
+    if await asyncio.to_thread(_owned_meta, conversation_id, claims.sub) is None:
         raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="Conversation not found")
     try:
         trees = await build_task_tree(get_redis(request), conversation_id)
