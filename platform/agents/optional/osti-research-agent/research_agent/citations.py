@@ -165,5 +165,5 @@ def linkify_paper_references(
         return match.group(0)  # Keep original if no mapping found
 
     # Match patterns like "Paper 1", "Paper 2", etc.
-    result = re.sub(r'Paper\s*(\d+)', replace_citation, answer_text)
+    result = re.sub(r"Paper\s*(\d+)", replace_citation, answer_text)
     return result

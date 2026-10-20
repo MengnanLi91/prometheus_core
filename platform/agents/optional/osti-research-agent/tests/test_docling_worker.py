@@ -41,8 +41,17 @@ class FakeItem:
     build_markdown and write_artifacts actually touch."""
 
     def __init__(
-        self, *, self_ref=None, label=None, text="", caption="",
-        level=1, page=1, df=None, image=None, df_error=False,
+        self,
+        *,
+        self_ref=None,
+        label=None,
+        text="",
+        caption="",
+        level=1,
+        page=1,
+        df=None,
+        image=None,
+        df_error=False,
     ):
         self.self_ref = self_ref
         self.label = label
@@ -81,7 +90,9 @@ class FakeDoc:
 
 def test_build_markdown_inserts_table_and_figure_placeholders():
     title = FakeItem(self_ref="#/texts/0", label="title", text="A Study")
-    section = FakeItem(self_ref="#/texts/1", label="section_header", text="Methods", level=1)
+    section = FakeItem(
+        self_ref="#/texts/1", label="section_header", text="Methods", level=1
+    )
     para = FakeItem(self_ref="#/texts/2", label="text", text="Intro paragraph.")
     tbl = FakeItem(self_ref="#/tables/0", label="table", caption="Table 1. Data")
     fig = FakeItem(self_ref="#/pictures/0", label="picture", caption="Fig 1. Plot")
@@ -98,16 +109,21 @@ def test_build_markdown_inserts_table_and_figure_placeholders():
 
 def test_write_artifacts_filters_small_figures_and_survives_bad_table(tmp_path):
     good_tbl = FakeItem(
-        self_ref="#/tables/0", label="table", caption="Results",
+        self_ref="#/tables/0",
+        label="table",
+        caption="Results",
         df=pd.DataFrame({"a": [1, 2], "b": [3, 4]}),
     )
     bad_tbl = FakeItem(self_ref="#/tables/1", label="table", df_error=True)
     big_pic = FakeItem(
-        self_ref="#/pictures/0", label="picture", caption="Big fig",
+        self_ref="#/pictures/0",
+        label="picture",
+        caption="Big fig",
         image=Image.new("RGB", (200, 200), "white"),  # area 40000 > threshold
     )
     small_pic = FakeItem(
-        self_ref="#/pictures/1", label="picture",
+        self_ref="#/pictures/1",
+        label="picture",
         image=Image.new("RGB", (50, 50), "white"),  # area 2500 < threshold
     )
     body = FakeItem(self_ref="#/texts/0", label="text", text="Body text.")

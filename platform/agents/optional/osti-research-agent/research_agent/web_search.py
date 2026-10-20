@@ -51,8 +51,14 @@ class TavilyProvider:
         self._api_key = api_key
 
     async def search(self, query: str, k: int) -> List[dict]:
-        payload = {"api_key": self._api_key, "query": query, "max_results": max(1, min(k, 20))}
-        async with httpx.AsyncClient(timeout=_TIMEOUT, headers={"User-Agent": _USER_AGENT}) as client:
+        payload = {
+            "api_key": self._api_key,
+            "query": query,
+            "max_results": max(1, min(k, 20)),
+        }
+        async with httpx.AsyncClient(
+            timeout=_TIMEOUT, headers={"User-Agent": _USER_AGENT}
+        ) as client:
             resp = await client.post(self._URL, json=payload)
             resp.raise_for_status()
             data = resp.json()
@@ -78,7 +84,9 @@ class SearxngProvider:
 
     async def search(self, query: str, k: int) -> List[dict]:
         params = {"q": query, "format": "json"}
-        async with httpx.AsyncClient(timeout=_TIMEOUT, headers={"User-Agent": _USER_AGENT}) as client:
+        async with httpx.AsyncClient(
+            timeout=_TIMEOUT, headers={"User-Agent": _USER_AGENT}
+        ) as client:
             resp = await client.get(f"{self._base_url}/search", params=params)
             resp.raise_for_status()
             data = resp.json()
@@ -103,5 +111,8 @@ def get_web_provider(config) -> Optional[WebSearchProvider]:
     if choice == "searxng" and config.searxng_url:
         return SearxngProvider(config.searxng_url)
     if choice != "none":
-        logger.warning("web_search_provider=%s but its key/url is not set; web search disabled", choice)
+        logger.warning(
+            "web_search_provider=%s but its key/url is not set; web search disabled",
+            choice,
+        )
     return None

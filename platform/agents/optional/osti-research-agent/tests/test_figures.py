@@ -48,7 +48,9 @@ def test_analyze_figures_writes_json_and_flips_flags(tmp_path):
         calls.append(len(images))
         return '{"readable": true, "figure_type": "line_plot", "key_findings": ["k"]}'
 
-    out = asyncio.run(figmod.analyze_figures(parsed, tmp_path, fake_vlm, max_figures=12))
+    out = asyncio.run(
+        figmod.analyze_figures(parsed, tmp_path, fake_vlm, max_figures=12)
+    )
 
     assert len(calls) == 2
     assert all(n == 1 for n in calls)  # one image per call
@@ -81,7 +83,9 @@ def test_analyze_figures_deadline_short_circuits(tmp_path):
 
     # A deadline inside the guard window means no new VLM call should start.
     deadline = time.monotonic() + 1
-    out = asyncio.run(figmod.analyze_figures(parsed, tmp_path, fake_vlm, deadline=deadline))
+    out = asyncio.run(
+        figmod.analyze_figures(parsed, tmp_path, fake_vlm, deadline=deadline)
+    )
 
     assert calls == []
     assert all(not f.analyzed for f in out.figures)

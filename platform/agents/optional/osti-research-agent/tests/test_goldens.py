@@ -46,7 +46,9 @@ pytestmark = pytest.mark.slow
 def test_golden_pdf_parses(pdf, tmp_path):
     config = AgentConfig(litellm_base_url="http://unused", workdir=tmp_path)
 
-    parsed = asyncio.run(pp.parse_paper_pipeline(str(pdf), pdf.stem, config, caches=None))
+    parsed = asyncio.run(
+        pp.parse_paper_pipeline(str(pdf), pdf.stem, config, caches=None)
+    )
 
     assert parsed.method in ("docling", "pymupdf")
     base = paper_dir(tmp_path, pdf.stem)

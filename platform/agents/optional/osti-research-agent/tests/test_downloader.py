@@ -51,7 +51,9 @@ def test_accepts_pdf_by_content_type(tmp_path):
 
 def test_accepts_pdf_by_magic_bytes_when_content_type_missing(tmp_path):
     dest = str(tmp_path / "p.pdf")
-    session = _session(headers={"Content-Type": "application/octet-stream"}, content=_PDF_BYTES)
+    session = _session(
+        headers={"Content-Type": "application/octet-stream"}, content=_PDF_BYTES
+    )
     with _patch_session(session):
         out = osti_client.download_pdf_from_url("https://x/p", dest)
     assert out == dest
@@ -59,7 +61,9 @@ def test_accepts_pdf_by_magic_bytes_when_content_type_missing(tmp_path):
 
 def test_rejects_html_page(tmp_path):
     dest = str(tmp_path / "p.pdf")
-    session = _session(headers={"Content-Type": "text/html"}, content=b"<html>nope</html>")
+    session = _session(
+        headers={"Content-Type": "text/html"}, content=b"<html>nope</html>"
+    )
     with _patch_session(session):
         out = osti_client.download_pdf_from_url("https://x/notpdf", dest)
     assert out is None
@@ -69,25 +73,36 @@ def test_rejects_html_page(tmp_path):
 def test_rejects_oversized_by_content_length(tmp_path):
     dest = str(tmp_path / "p.pdf")
     session = _session(
-        headers={"Content-Type": "application/pdf", "Content-Length": str(100 * 1024 * 1024)},
+        headers={
+            "Content-Type": "application/pdf",
+            "Content-Length": str(100 * 1024 * 1024),
+        },
         content=_PDF_BYTES,
     )
     with _patch_session(session):
-        out = osti_client.download_pdf_from_url("https://x/big.pdf", dest, max_bytes=50 * 1024 * 1024)
+        out = osti_client.download_pdf_from_url(
+            "https://x/big.pdf", dest, max_bytes=50 * 1024 * 1024
+        )
     assert out is None
 
 
 def test_rejects_oversized_by_body_length(tmp_path):
     dest = str(tmp_path / "p.pdf")
-    session = _session(headers={"Content-Type": "application/pdf"}, content=b"%PDF" + b"x" * 5000)
+    session = _session(
+        headers={"Content-Type": "application/pdf"}, content=b"%PDF" + b"x" * 5000
+    )
     with _patch_session(session):
-        out = osti_client.download_pdf_from_url("https://x/big.pdf", dest, max_bytes=1000)
+        out = osti_client.download_pdf_from_url(
+            "https://x/big.pdf", dest, max_bytes=1000
+        )
     assert out is None
 
 
 def test_non_200_returns_none(tmp_path):
     dest = str(tmp_path / "p.pdf")
-    session = _session(status_code=404, headers={"Content-Type": "application/pdf"}, content=_PDF_BYTES)
+    session = _session(
+        status_code=404, headers={"Content-Type": "application/pdf"}, content=_PDF_BYTES
+    )
     with _patch_session(session):
         out = osti_client.download_pdf_from_url("https://x/missing.pdf", dest)
     assert out is None

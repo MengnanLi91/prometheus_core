@@ -27,8 +27,16 @@ from research_agent.knowledge import RedisKnowledgeStore
 # A tiny fixed vocabulary; each embedding dimension counts a keyword, so cosine
 # similarity reflects shared keywords. Deterministic and offline.
 _VOCAB = [
-    "titanium", "creep", "steel", "corrosion", "temperature",
-    "high", "rate", "resistance", "neutron", "irradiation",
+    "titanium",
+    "creep",
+    "steel",
+    "corrosion",
+    "temperature",
+    "high",
+    "rate",
+    "resistance",
+    "neutron",
+    "irradiation",
 ]
 
 
@@ -101,7 +109,9 @@ def test_store_fact_uses_scan_not_keys():
     store = _store()
     redis = store._redis
     # scan_iter is the only iteration primitive; keys() the store must not use.
-    redis.keys = lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not call KEYS"))
+    redis.keys = lambda *a, **k: (_ for _ in ()).throw(
+        AssertionError("must not call KEYS")
+    )
 
     async def run():
         await store.store_fact(content="titanium creep rate", source_id="1")

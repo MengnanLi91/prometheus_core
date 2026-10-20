@@ -31,6 +31,7 @@ from research_agent.core.deep_agent import (
     _analyze_paper,
     _parsed_paper_directory,
     build_paper_analyzer,
+    build_paper_verifier,
     build_research_agent,
 )
 from research_agent.core.deep_runner import build_final_result
@@ -241,6 +242,26 @@ def test_verification_schema_avoids_union_and_enum_keywords():
     assert "confidence" not in VerificationResult.model_fields
     assert VERIFIER_MODEL_CALL_LIMIT == 6
     assert VERIFIER_TOOL_CALL_LIMIT == 8
+
+
+def test_paper_verifier_does_not_force_structured_output_tool(monkeypatch, tmp_path):
+    captured = {}
+    sentinel = object()
+
+    def fake_create_deep_agent(**kwargs):
+        captured.update(kwargs)
+        return sentinel
+
+    monkeypatch.setattr("deepagents.create_deep_agent", fake_create_deep_agent)
+    monkeypatch.setattr(
+        "research_agent.core.deep_agent.chat_model",
+        lambda config, role: object(),
+    )
+
+    config = AgentConfig(litellm_base_url="http://unused", workdir=tmp_path)
+
+    assert build_paper_verifier(config, backend=object()) is sentinel
+    assert "response_format" not in captured
 
 
 def test_supported_candidate_enters_run_context(tmp_path):
@@ -838,11 +859,9 @@ def test_timeout_during_verification_never_exposes_candidate(tmp_path):
     assert context.verification_errors == []
 
 
-@pytest.mark.parametrize("verifier_output", ["structured", "json"])
 def test_real_compiled_task_reads_artifacts_and_returns_verified_finding(
     tmp_path,
     monkeypatch,
-    verifier_output,
 ):
     paper = tmp_path / "papers" / "123"
     paper.mkdir(parents=True)
@@ -868,21 +887,6 @@ def test_real_compiled_task_reads_artifacts_and_returns_verified_finding(
             _analysis_result()["messages"][0],
         ]
     )
-    verifier_final = (
-        AIMessage(
-            content="",
-            tool_calls=[
-                {
-                    "name": "VerificationResult",
-                    "args": _verification().model_dump(),
-                    "id": "verify-result",
-                    "type": "tool_call",
-                }
-            ],
-        )
-        if verifier_output == "structured"
-        else AIMessage(content=_verification().model_dump_json())
-    )
     verifier = _ToolBindingFakeChatModel(
         responses=[
             AIMessage(
@@ -896,7 +900,7 @@ def test_real_compiled_task_reads_artifacts_and_returns_verified_finding(
                     }
                 ],
             ),
-            verifier_final,
+            AIMessage(content=_verification().model_dump_json()),
         ]
     )
     orchestrator = _ToolBindingFakeChatModel(

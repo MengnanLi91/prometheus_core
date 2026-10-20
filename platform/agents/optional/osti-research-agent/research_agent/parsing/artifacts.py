@@ -20,7 +20,6 @@ Use :func:`ParsedPaper.abspath` to resolve one against a base directory.
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import List, Literal, Optional
 
@@ -100,4 +99,7 @@ def paper_dir(workdir: Path, source_id: str) -> Path:
 
 
 def _safe_source_id(source_id: str) -> str:
-    return "".join(c if (c.isalnum() or c in "-_.") else "_" for c in str(source_id)) or "unknown"
+    return (
+        "".join(c if (c.isalnum() or c in "-_.") else "_" for c in str(source_id))
+        or "unknown"
+    )

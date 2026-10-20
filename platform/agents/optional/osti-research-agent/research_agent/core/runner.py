@@ -49,18 +49,29 @@ class ResearchRunner:
     ):
         self.config = config
         route = config.model_route("orchestrator")
-        self._complete = complete or LiteLLMClient(
-            route.base_url,
-            route.api_key,
-            route.model,
-        ).complete
+        self._complete = (
+            complete
+            or LiteLLMClient(
+                route.base_url,
+                route.api_key,
+                route.model,
+            ).complete
+        )
 
         # Only build a RedisCaches when the caller didn't already hand us one
         # (the A2A executor reuses its own) and config actually has a Redis URL
         # (the CLI's --no-redis mode leaves this None -> everything degrades
         # gracefully, per research_agent.memory's Optional[redis.Redis] handling).
-        caches = RedisCaches(config.redis_url, config.redis_password) if config.redis_url else None
-        self._redis_client = redis_client if redis_client is not None else (caches.client if caches else None)
+        caches = (
+            RedisCaches(config.redis_url, config.redis_password)
+            if config.redis_url
+            else None
+        )
+        self._redis_client = (
+            redis_client
+            if redis_client is not None
+            else (caches.client if caches else None)
+        )
         self._pdf_cache = pdf_cache if pdf_cache is not None else caches
         self._text_cache = text_cache if text_cache is not None else caches
 
@@ -75,7 +86,9 @@ class ResearchRunner:
         async for event in gen:
             yield event
 
-    async def _run_pipeline(self, question: str, *, run_id: str) -> AsyncIterator[AgentEvent]:
+    async def _run_pipeline(
+        self, question: str, *, run_id: str
+    ) -> AsyncIterator[AgentEvent]:
         q: asyncio.Queue = asyncio.Queue()
         findings: List[Dict] = []
 
@@ -98,7 +111,9 @@ class ResearchRunner:
                 await q.put(_dict_to_final_result(question, result))
             except Exception as e:
                 logger.error(f"[{run_id}] Pipeline failed: {e}", exc_info=True)
-                await q.put(FinalResult(status="error", question=question, answer=str(e)))
+                await q.put(
+                    FinalResult(status="error", question=question, answer=str(e))
+                )
             finally:
                 await q.put(None)
 
@@ -107,7 +122,9 @@ class ResearchRunner:
         ):
             yield event
 
-    async def _run_deep(self, question: str, *, run_id: str) -> AsyncIterator[AgentEvent]:
+    async def _run_deep(
+        self, question: str, *, run_id: str
+    ) -> AsyncIterator[AgentEvent]:
         # Imported lazily: the deep engine pulls in langchain/deepagents, which
         # the pipeline engine (and pipeline-only deployments) must not require.
         from research_agent.core.deep_runner import run_deep
@@ -132,7 +149,9 @@ class ResearchRunner:
                     await q.put(event)
             except Exception as e:
                 logger.error(f"[{run_id}] Deep agent failed: {e}", exc_info=True)
-                await q.put(FinalResult(status="error", question=question, answer=str(e)))
+                await q.put(
+                    FinalResult(status="error", question=question, answer=str(e))
+                )
             finally:
                 await q.put(None)
 

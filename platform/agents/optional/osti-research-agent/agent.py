@@ -35,10 +35,8 @@ from datetime import datetime, timezone
 from typing import Any, Dict
 
 import redis
-from prometheus_api.agent import PrometheusAgent, TaskState
+from prometheus_api.agent import EventQueue, PrometheusAgent, RequestContext, TaskState
 from prometheus_api.llm_client import LLMConfig
-from a2a.server.agent_execution.context import RequestContext
-from a2a.server.events import EventQueue
 
 from research_agent.core.adapter import result_to_a2a_json
 from research_agent.core.config import AgentConfig
@@ -49,8 +47,7 @@ from research_agent.memory import RedisCaches
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
@@ -81,7 +78,9 @@ class OSTIResearchAgent(PrometheusAgent):
         """Binary-data Redis client (cached PDFs)."""
         return self._caches.binary_client
 
-    def _store_status_in_redis(self, conversation_id: str, status_message: str, final: bool = False) -> None:
+    def _store_status_in_redis(
+        self, conversation_id: str, status_message: str, final: bool = False
+    ) -> None:
         """Store status update in Redis for polling by frontend."""
         if not conversation_id:
             return
@@ -90,7 +89,7 @@ class OSTIResearchAgent(PrometheusAgent):
             status_data = {
                 "message": status_message,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
-                "final": final
+                "final": final,
             }
             # Store latest status with 10-minute TTL
             self.redis_client.set(
@@ -113,7 +112,7 @@ class OSTIResearchAgent(PrometheusAgent):
         event_queue: EventQueue,
         status_message: str,
         final: bool = False,
-        conversation_id: str = None
+        conversation_id: str = None,
     ) -> None:
         """Helper to send status updates and log progress."""
         # Log the status message for visibility
@@ -140,10 +139,10 @@ class OSTIResearchAgent(PrometheusAgent):
         context: RequestContext,
         event_queue: EventQueue,
         result_text: str,
-        conversation_id: str = None
+        conversation_id: str = None,
     ) -> None:
         """Send the final result to the event queue so it appears in history."""
-        logger.info(f"[RESULT] Sending final result to event queue")
+        logger.info("[RESULT] Sending final result to event queue")
 
         # Store final status in Redis
         status_id = conversation_id or context.context_id
@@ -156,7 +155,9 @@ class OSTIResearchAgent(PrometheusAgent):
             final=True,
             message=result_text,
         )
-        logger.info(f"[RESULT] Final result sent to event queue ({len(result_text)} chars)")
+        logger.info(
+            f"[RESULT] Final result sent to event queue ({len(result_text)} chars)"
+        )
 
     async def _execute(
         self,
@@ -173,7 +174,9 @@ class OSTIResearchAgent(PrometheusAgent):
         logger.info("=" * 60)
 
         question = params.get("question")
-        conversation_id = params.get("conversation_id") or context.context_id or str(uuid.uuid4())
+        conversation_id = (
+            params.get("conversation_id") or context.context_id or str(uuid.uuid4())
+        )
 
         if not question:
             logger.error("No question provided in params")
@@ -183,7 +186,10 @@ class OSTIResearchAgent(PrometheusAgent):
                 "conversation_id": conversation_id,
             }
             await self._send_final_result(
-                context, event_queue, json.dumps(error_result, indent=2, default=str), conversation_id
+                context,
+                event_queue,
+                json.dumps(error_result, indent=2, default=str),
+                conversation_id,
             )
             return error_result
 
@@ -197,8 +203,8 @@ class OSTIResearchAgent(PrometheusAgent):
         final = None
         async with self.llm_client(context, config=llm_config) as llm:
 
-            async def complete(prompt: str, *, max_tokens: int, temperature: float = 0) -> str:
-                response = await llm.medium(prompt, max_tokens=max_tokens, temperature=temperature)
+            async def complete(prompt: str, *, max_tokens: int) -> str:
+                response = await llm.medium(prompt, max_tokens=max_tokens)
                 return response.text
 
             runner = ResearchRunner(
@@ -211,12 +217,16 @@ class OSTIResearchAgent(PrometheusAgent):
 
             async for event in runner.run(question, run_id=conversation_id):
                 if isinstance(event, ProgressEvent):
-                    await self._send_status(context, event_queue, event.message, False, conversation_id)
+                    await self._send_status(
+                        context, event_queue, event.message, False, conversation_id
+                    )
                 else:
                     final = event
 
         result_text = result_to_a2a_json(final)
-        await self._send_final_result(context, event_queue, result_text, conversation_id)
+        await self._send_final_result(
+            context, event_queue, result_text, conversation_id
+        )
 
         return final.model_dump(mode="json")
 

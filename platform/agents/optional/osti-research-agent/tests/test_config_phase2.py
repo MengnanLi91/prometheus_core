@@ -22,6 +22,12 @@ def test_from_env_reads_phase2_flags(monkeypatch):
     monkeypatch.setenv("ANALYZE_FIGURES", "true")
     monkeypatch.setenv("ANALYZER_MODEL_CALL_LIMIT", "6")
     monkeypatch.setenv("ANALYZER_TOOL_CALL_LIMIT", "10")
+    monkeypatch.setenv("TOTAL_BUDGET_S", "600")
+    monkeypatch.setenv("MAX_PAPERS_ANALYZED", "4")
+    monkeypatch.setenv("MAX_PDF_MB", "40")
+    monkeypatch.setenv("DOCLING_TIMEOUT_S", "180")
+    monkeypatch.setenv("MAX_FIGURES", "8")
+    monkeypatch.setenv("MIN_FIGURE_AREA", "20000")
 
     cfg = AgentConfig.from_env()
 
@@ -30,6 +36,12 @@ def test_from_env_reads_phase2_flags(monkeypatch):
     assert cfg.analyze_figures is True
     assert cfg.analyzer_model_call_limit == 6
     assert cfg.analyzer_tool_call_limit == 10
+    assert cfg.total_budget_s == 600
+    assert cfg.max_papers_analyzed == 4
+    assert cfg.max_pdf_mb == 40
+    assert cfg.docling_timeout_s == 180
+    assert cfg.max_figures == 8
+    assert cfg.min_figure_area == 20000
 
 
 def test_from_env_phase2_defaults(monkeypatch):
@@ -39,6 +51,12 @@ def test_from_env_phase2_defaults(monkeypatch):
         "ANALYZE_FIGURES",
         "ANALYZER_MODEL_CALL_LIMIT",
         "ANALYZER_TOOL_CALL_LIMIT",
+        "TOTAL_BUDGET_S",
+        "MAX_PAPERS_ANALYZED",
+        "MAX_PDF_MB",
+        "DOCLING_TIMEOUT_S",
+        "MAX_FIGURES",
+        "MIN_FIGURE_AREA",
         "LITELLM_BASE_URL",
         "REGISTRY_URL",
     ):
@@ -51,6 +69,12 @@ def test_from_env_phase2_defaults(monkeypatch):
     assert cfg.analyze_figures is False
     assert cfg.analyzer_model_call_limit == 8
     assert cfg.analyzer_tool_call_limit == 12
+    assert cfg.total_budget_s == 900
+    assert cfg.max_papers_analyzed == 5
+    assert cfg.max_pdf_mb == 50
+    assert cfg.docling_timeout_s == 240
+    assert cfg.max_figures == 12
+    assert cfg.min_figure_area == 10_000
 
 
 def test_env_bool(monkeypatch):

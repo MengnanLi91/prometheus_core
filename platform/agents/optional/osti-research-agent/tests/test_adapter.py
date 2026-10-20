@@ -17,9 +17,22 @@ from research_agent.core.events import FinalResult, Finding
 
 # Every status must expose the same public response shape.
 EXPECTED_KEYS = {
-    "status", "question", "answer", "provenance", "findings", "search_query",
-    "papers_assessed", "relevant_papers", "papers_analyzed", "facts_stored",
-    "suggested_queries", "progress_log", "cached", "source", "timestamp", "agent",
+    "status",
+    "question",
+    "answer",
+    "provenance",
+    "findings",
+    "search_query",
+    "papers_assessed",
+    "relevant_papers",
+    "papers_analyzed",
+    "facts_stored",
+    "suggested_queries",
+    "progress_log",
+    "cached",
+    "source",
+    "timestamp",
+    "agent",
 }
 
 

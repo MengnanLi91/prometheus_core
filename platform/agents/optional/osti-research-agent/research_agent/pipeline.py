@@ -73,8 +73,12 @@ async def answer_question(
     if cached_answer and cached_answer.get("sufficient", True):
         # Cached answers may reference original paper numbering; preserve that
         # mapping while deduplicating to keep links accurate.
-        provenance, paper_to_provenance = citations.deduplicate_provenance_with_mapping(cached_answer["sources"])
-        answer = citations.linkify_paper_references(cached_answer["answer"], provenance, paper_to_provenance)
+        provenance, paper_to_provenance = citations.deduplicate_provenance_with_mapping(
+            cached_answer["sources"]
+        )
+        answer = citations.linkify_paper_references(
+            cached_answer["answer"], provenance, paper_to_provenance
+        )
 
         suggested_queries = await llm_steps.suggest_followup_queries(
             question=question,
@@ -108,8 +112,15 @@ async def answer_question(
             )
 
     return await perform_literature_search(
-        question, complete, emit, redis_client, pdf_cache, text_cache,
-        findings=findings, config=config, caches=caches,
+        question,
+        complete,
+        emit,
+        redis_client,
+        pdf_cache,
+        text_cache,
+        findings=findings,
+        config=config,
+        caches=caches,
     )
 
 
@@ -155,7 +166,7 @@ async def perform_literature_search(
         "search_results": [],
         "answers_found": [],
         "status": "generating_query",
-        "timeout_occurred": False
+        "timeout_occurred": False,
     }
 
     # Step 1: Generate search query
@@ -171,7 +182,9 @@ async def perform_literature_search(
     log_progress("Searching OSTI database...")
     await emit(f"Searching OSTI database for: '{search_query}'...")
 
-    search_results = await asyncio.to_thread(osti_client.search_osti, search_query, max_results=15)
+    search_results = await asyncio.to_thread(
+        osti_client.search_osti, search_query, max_results=15
+    )
     state["search_results"] = search_results
     state["status"] = "assessing"
 
@@ -224,7 +237,11 @@ async def perform_literature_search(
             continue
 
         relevant_count += 1
-        short_title = result['title'][:50] + "..." if len(result['title']) > 50 else result['title']
+        short_title = (
+            result["title"][:50] + "..."
+            if len(result["title"]) > 50
+            else result["title"]
+        )
         log_progress(f"Paper {relevant_count} relevant: {short_title}")
         await emit(
             f"Relevant paper selected for download:\n"
@@ -236,7 +253,9 @@ async def perform_literature_search(
         # Download paper
         await emit(f"Downloading paper {relevant_count}: {short_title}")
 
-        pdf_path = await asyncio.to_thread(osti_client.download_paper, result["osti_id"], pdf_cache)
+        pdf_path = await asyncio.to_thread(
+            osti_client.download_paper, result["osti_id"], pdf_cache
+        )
 
         if not pdf_path:
             result["download_failed"] = True
@@ -247,9 +266,7 @@ async def perform_literature_search(
             continue
 
         log_progress("  -> Downloaded successfully")
-        await emit(
-            f"Downloaded OSTI #{result['osti_id']} ({result['title']})."
-        )
+        await emit(f"Downloaded OSTI #{result['osti_id']} ({result['title']}).")
 
         # Convert to text (async with timeout)
         await emit(
@@ -259,20 +276,24 @@ async def perform_literature_search(
         use_artifacts = config is not None and config.parser == "artifacts"
         if use_artifacts:
             parsed = await parse_pipeline.parse_paper_pipeline(
-                pdf_path, result["osti_id"], config, caches, emit,
+                pdf_path,
+                result["osti_id"],
+                config,
+                caches,
+                emit,
                 deadline=parse_deadline,
             )
             base_dir = paper_dir(config.workdir, result["osti_id"])
             paper_text = _assemble_paper_text(parsed, base_dir)
         else:
-            paper_text = await pdf_convert.convert_pdf_to_text_async(pdf_path, text_cache, timeout=300)
+            paper_text = await pdf_convert.convert_pdf_to_text_async(
+                pdf_path, text_cache, timeout=300
+            )
 
         if not paper_text:
             result["conversion_failed"] = True
             log_progress("  -> Conversion failed or timed out")
-            await emit(
-                f"Conversion failed or timed out for OSTI #{result['osti_id']}."
-            )
+            await emit(f"Conversion failed or timed out for OSTI #{result['osti_id']}.")
             continue
 
         log_progress(f"  -> Converted ({len(paper_text)} chars)")
@@ -352,13 +373,15 @@ async def perform_literature_search(
             "papers_analyzed": 0,
             "progress_log": progress_log,
             "suggested_queries": suggested_queries,
-            "timestamp": datetime.now(timezone.utc).isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
     log_progress(f"Synthesizing answer from {len(state['answers_found'])} papers...")
     await emit(f"Synthesizing answer from {len(state['answers_found'])} papers...")
 
-    final_answer = await llm_steps.synthesize_final_answer(question, state["answers_found"], complete)
+    final_answer = await llm_steps.synthesize_final_answer(
+        question, state["answers_found"], complete
+    )
 
     # Step 5: Extract and store facts
     log_progress("Storing facts in knowledge base...")
@@ -372,19 +395,31 @@ async def perform_literature_search(
     )
 
     # Step 6: Cache the answer
-    await asyncio.to_thread(memory.cache_answer, question, final_answer, state["answers_found"], redis_client)
+    await asyncio.to_thread(
+        memory.cache_answer,
+        question,
+        final_answer,
+        state["answers_found"],
+        redis_client,
+    )
 
     elapsed = time.time() - start_time
     log_progress(f"Complete! ({elapsed:.1f}s total)")
 
     # Build deduplicated provenance with mapping from original paper numbers
     # This allows "Paper 5" in the text to be linked to the correct deduplicated source
-    provenance, paper_to_provenance = citations.deduplicate_provenance_with_mapping(state["answers_found"])
+    provenance, paper_to_provenance = citations.deduplicate_provenance_with_mapping(
+        state["answers_found"]
+    )
 
-    log_progress(f"Deduplicated {len(state['answers_found'])} papers to {len(provenance)} unique sources")
+    log_progress(
+        f"Deduplicated {len(state['answers_found'])} papers to {len(provenance)} unique sources"
+    )
 
     # Convert "Paper X" citations to clickable links using the mapping
-    final_answer = citations.linkify_paper_references(final_answer, provenance, paper_to_provenance)
+    final_answer = citations.linkify_paper_references(
+        final_answer, provenance, paper_to_provenance
+    )
     suggested_queries = await llm_steps.suggest_followup_queries(
         question=question,
         answer=final_answer,
@@ -406,5 +441,5 @@ async def perform_literature_search(
         "progress_log": progress_log,
         "suggested_queries": suggested_queries,
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "agent": "OSTI Research Agent"
+        "agent": "OSTI Research Agent",
     }

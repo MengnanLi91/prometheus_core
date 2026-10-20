@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 def extract_json_from_text(text: str) -> Optional[Any]:
     """Extract JSON from text that may contain markdown code blocks."""
     # Try to find JSON in code blocks first
-    json_match = re.search(r'```json\s*(\[.*?\]|\{.*?\})\s*```', text, re.DOTALL)
+    json_match = re.search(r"```json\s*(\[.*?\]|\{.*?\})\s*```", text, re.DOTALL)
     if json_match:
         try:
             return json.loads(json_match.group(1))
@@ -44,7 +44,7 @@ def extract_json_from_text(text: str) -> Optional[Any]:
             pass
 
     # Try to find raw JSON object or array
-    json_match = re.search(r'(\[.*\]|\{.*\})', text, re.DOTALL)
+    json_match = re.search(r"(\[.*\]|\{.*\})", text, re.DOTALL)
     if json_match:
         try:
             return json.loads(json_match.group(0))
@@ -59,9 +59,9 @@ async def formulate_search_queries(question: str, complete: CompleteFn) -> str:
     prompt = SEARCH_QUERY_PROMPT_TEMPLATE.format(question=question)
 
     try:
-        response_text = await complete(prompt, max_tokens=256, temperature=0)
+        response_text = await complete(prompt, max_tokens=256)
 
-        return response_text.strip().strip('"\'')
+        return response_text.strip().strip("\"'")
     except Exception as e:
         logger.error(f"Error formulating search query: {e}")
         # Fallback: extract key terms from question
@@ -82,10 +82,14 @@ async def assess_abstract(
     )
 
     try:
-        response_text = await complete(prompt, max_tokens=256, temperature=0)
+        response_text = await complete(prompt, max_tokens=256)
 
         result = extract_json_from_text(response_text)
-        return result or {"relevant": False, "confidence": 0.0, "reason": "Parse failed"}
+        return result or {
+            "relevant": False,
+            "confidence": 0.0,
+            "reason": "Parse failed",
+        }
     except Exception as e:
         logger.error(f"Error assessing abstract: {e}")
         return {"relevant": False, "confidence": 0.0, "reason": f"Error: {str(e)}"}
@@ -108,7 +112,7 @@ async def extract_answer_from_paper(
     )
 
     try:
-        response_text = await complete(prompt, max_tokens=2048, temperature=0)
+        response_text = await complete(prompt, max_tokens=2048)
 
         result = extract_json_from_text(response_text)
         return result or {"answered": False}
@@ -139,7 +143,7 @@ async def synthesize_final_answer(
     )
 
     try:
-        return await complete(prompt, max_tokens=2048, temperature=0)
+        return await complete(prompt, max_tokens=2048)
     except Exception as e:
         logger.error(f"Error synthesizing answer: {e}")
         # Fallback: concatenate answers
@@ -168,12 +172,14 @@ async def suggest_followup_queries(
     seen = set()
 
     try:
-        response_text = await complete(prompt, max_tokens=512, temperature=0)
+        response_text = await complete(prompt, max_tokens=512)
         parsed = extract_json_from_text(response_text)
         if isinstance(parsed, list):
             for item in parsed:
                 if isinstance(item, dict):
-                    candidate = str(item.get("suggested_query") or item.get("query") or "").strip()
+                    candidate = str(
+                        item.get("suggested_query") or item.get("query") or ""
+                    ).strip()
                 else:
                     candidate = str(item or "").strip()
                 if not candidate:
@@ -202,12 +208,14 @@ async def extract_and_store_facts(
     # so importing memory at module scope here would create an import cycle.
     from research_agent.memory import store_atomic_fact
 
-    answers_text = "\n\n".join([
-        f"Paper: {ans['title']} (OSTI #{ans['osti_id']})\n"
-        f"Answer: {ans['answer']}\n"
-        f"Evidence: {ans.get('evidence', '')}"
-        for ans in answers
-    ])
+    answers_text = "\n\n".join(
+        [
+            f"Paper: {ans['title']} (OSTI #{ans['osti_id']})\n"
+            f"Answer: {ans['answer']}\n"
+            f"Evidence: {ans.get('evidence', '')}"
+            for ans in answers
+        ]
+    )
 
     prompt = EXTRACT_FACTS_PROMPT_TEMPLATE.format(
         question=question,
@@ -215,7 +223,7 @@ async def extract_and_store_facts(
     )
 
     try:
-        response_text = await complete(prompt, max_tokens=2048, temperature=0)
+        response_text = await complete(prompt, max_tokens=2048)
 
         facts = extract_json_from_text(response_text)
 
@@ -226,8 +234,12 @@ async def extract_and_store_facts(
         for fact_data in facts:
             # Find source paper details
             source_paper = next(
-                (ans for ans in answers if ans["osti_id"] == fact_data.get("source_osti_id")),
-                answers[0] if answers else {}
+                (
+                    ans
+                    for ans in answers
+                    if ans["osti_id"] == fact_data.get("source_osti_id")
+                ),
+                answers[0] if answers else {},
             )
 
             fact_id = await asyncio.to_thread(

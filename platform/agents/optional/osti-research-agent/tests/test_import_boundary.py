@@ -29,6 +29,12 @@ def test_research_agent_core_does_not_import_prometheus_api_or_a2a():
     for path in sorted(RESEARCH_AGENT_DIR.rglob("*.py")):
         for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
             if FORBIDDEN.match(line):
-                violations.append(f"{path.relative_to(RESEARCH_AGENT_DIR.parent)}:{lineno}: {line.strip()}")
+                violations.append(
+                    f"{path.relative_to(RESEARCH_AGENT_DIR.parent)}:{lineno}: {line.strip()}"
+                )
 
-    assert not violations, "research_agent/ must not import prometheus_api or a2a:\n" + "\n".join(violations)
+    assert (
+        not violations
+    ), "research_agent/ must not import prometheus_api or a2a:\n" + "\n".join(
+        violations
+    )

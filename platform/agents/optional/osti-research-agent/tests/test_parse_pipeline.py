@@ -26,8 +26,8 @@ from research_agent.core.config import AgentConfig
 from research_agent.parsing import pipeline as pp
 from research_agent.parsing.artifacts import ParsedPaper, paper_dir
 
-
 # --- _decide_ocr -----------------------------------------------------------
+
 
 def test_decide_ocr_forced_modes():
     assert pp._decide_ocr("on", 10, 9999) is True
@@ -45,6 +45,7 @@ def test_decide_ocr_auto_detects_scan():
 
 
 # --- tar/untar cache blob --------------------------------------------------
+
 
 def test_tar_untar_roundtrip(tmp_path):
     src = tmp_path / "src"
@@ -76,6 +77,7 @@ def test_untar_rejects_path_traversal(tmp_path):
 
 # --- fallback + cache in parse_paper_pipeline ------------------------------
 
+
 class FakeArtifactCache:
     def __init__(self):
         self.blobs = {}
@@ -99,9 +101,14 @@ def test_pipeline_falls_back_to_pymupdf(tmp_path, monkeypatch):
     monkeypatch.setattr(pp, "_precheck", lambda p: (3, 500))
     monkeypatch.setattr(pp, "_run_docling_worker_sync", lambda *a, **k: None)
     from research_agent import pdf_convert
-    monkeypatch.setattr(pdf_convert, "_convert_pdf_with_pymupdf", lambda p: "FALLBACK TEXT")
 
-    parsed = asyncio.run(pp.parse_paper_pipeline("dummy.pdf", "42", config, caches=None))
+    monkeypatch.setattr(
+        pdf_convert, "_convert_pdf_with_pymupdf", lambda p: "FALLBACK TEXT"
+    )
+
+    parsed = asyncio.run(
+        pp.parse_paper_pipeline("dummy.pdf", "42", config, caches=None)
+    )
 
     assert parsed.method == "pymupdf"
     assert parsed.warnings  # records that tables/figures are unavailable
@@ -119,7 +126,9 @@ def test_pipeline_artifact_cache_roundtrip(tmp_path, monkeypatch):
         outdir = Path(outdir)
         outdir.mkdir(parents=True, exist_ok=True)
         (outdir / "paper.md").write_text("cached body")
-        parsed = ParsedPaper(source_id=options["source_id"], method="docling", char_count=11)
+        parsed = ParsedPaper(
+            source_id=options["source_id"], method="docling", char_count=11
+        )
         parsed.write_meta(outdir)
         return parsed
 

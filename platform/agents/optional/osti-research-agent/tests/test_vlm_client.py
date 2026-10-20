@@ -28,17 +28,22 @@ from research_agent.core.llm import LiteLLMVlmClient
 @respx.mock
 def test_vlm_client_sends_multimodal_parts():
     route = respx.post("http://proxy/chat/completions").mock(
-        return_value=httpx.Response(200, json={"choices": [{"message": {"content": "analysis"}}]})
+        return_value=httpx.Response(
+            200, json={"choices": [{"message": {"content": "analysis"}}]}
+        )
     )
 
     client = LiteLLMVlmClient("http://proxy", api_key="k", model="medium")
-    result = asyncio.run(client.complete("describe", [b"\x89PNG\r\n", b"\x89PNG2"], max_tokens=100))
+    result = asyncio.run(
+        client.complete("describe", [b"\x89PNG\r\n", b"\x89PNG2"], max_tokens=100)
+    )
 
     assert result == "analysis"
 
     body = json.loads(route.calls.last.request.content)
     assert body["model"] == "medium"
     assert body["max_tokens"] == 100
+    assert "temperature" not in body
 
     content = body["messages"][0]["content"]
     assert content[0] == {"type": "text", "text": "describe"}
@@ -53,7 +58,9 @@ def test_vlm_client_sends_multimodal_parts():
 @respx.mock
 def test_vlm_client_omits_auth_header_without_key():
     respx.post("http://proxy/chat/completions").mock(
-        return_value=httpx.Response(200, json={"choices": [{"message": {"content": "ok"}}]})
+        return_value=httpx.Response(
+            200, json={"choices": [{"message": {"content": "ok"}}]}
+        )
     )
     client = LiteLLMVlmClient("http://proxy", model="medium")
     result = asyncio.run(client.complete("x", [b"png"], max_tokens=10))

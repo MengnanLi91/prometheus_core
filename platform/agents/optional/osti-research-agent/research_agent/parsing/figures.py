@@ -107,14 +107,20 @@ async def analyze_figures(
                 return
 
         async with sem:
-            if deadline is not None and time.monotonic() > (deadline - _DEADLINE_GUARD_S):
-                logger.info("[figures] deadline approaching; skipping figure %d", fig.index)
+            if deadline is not None and time.monotonic() > (
+                deadline - _DEADLINE_GUARD_S
+            ):
+                logger.info(
+                    "[figures] deadline approaching; skipping figure %d", fig.index
+                )
                 return
-            caption_block = f'The figure caption reads: "{fig.caption}"\n\n' if fig.caption else ""
+            caption_block = (
+                f'The figure caption reads: "{fig.caption}"\n\n' if fig.caption else ""
+            )
             prompt = FIGURE_PROMPT.format(caption_block=caption_block)
             try:
                 png = (base_dir / fig.png_path).read_bytes()
-                raw = await vlm_complete(prompt, [png], max_tokens=800, temperature=0)
+                raw = await vlm_complete(prompt, [png], max_tokens=800)
                 data = extract_json_from_text(raw)
                 if not isinstance(data, dict):
                     data = {"readable": False, "error": "unparseable VLM response"}
@@ -127,7 +133,9 @@ async def analyze_figures(
         fig.json_path, fig.analyzed = json_rel, True
         if cache is not None:
             try:
-                cache.put_figjson(parsed.source_id, fig.index, payload, ttl_s=_CACHE_TTL_S)
+                cache.put_figjson(
+                    parsed.source_id, fig.index, payload, ttl_s=_CACHE_TTL_S
+                )
             except Exception:
                 pass
 

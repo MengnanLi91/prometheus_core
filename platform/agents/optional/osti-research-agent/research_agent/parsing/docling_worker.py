@@ -47,7 +47,13 @@ logger = logging.getLogger(__name__)
 
 # Labels that carry running prose we want verbatim in paper.md.
 _TEXT_LABELS = {
-    "text", "paragraph", "reference", "footnote", "code", "formula", "caption",
+    "text",
+    "paragraph",
+    "reference",
+    "footnote",
+    "code",
+    "formula",
+    "caption",
 }
 
 
@@ -66,7 +72,9 @@ def _heading_prefix(item: Any) -> str:
     return "#" * min(1 + int(level), 6)
 
 
-def build_markdown(doc: Any, table_markers: Dict[str, str], figure_markers: Dict[str, str]) -> str:
+def build_markdown(
+    doc: Any, table_markers: Dict[str, str], figure_markers: Dict[str, str]
+) -> str:
     """Render the document in reading order, replacing tables and (kept)
     figures with ``[TABLE table_NN]`` / ``[FIGURE fig_NN]`` locator lines so a
     reader can find the corresponding artifact file. Table/figure *content*
@@ -75,7 +83,9 @@ def build_markdown(doc: Any, table_markers: Dict[str, str], figure_markers: Dict
     lines: List[str] = []
     for item, _level in doc.iterate_items():
         ref = getattr(item, "self_ref", None)
-        label = getattr(getattr(item, "label", None), "value", getattr(item, "label", None))
+        label = getattr(
+            getattr(item, "label", None), "value", getattr(item, "label", None)
+        )
 
         if ref in table_markers:
             cap = (getattr(item, "caption_text", lambda _d: "")(doc) or "").strip()
@@ -162,11 +172,17 @@ def write_artifacts(doc: Any, out: Path, source_id: str, min_area: int) -> Parse
         df.to_csv(out / csv_rel, index=False)
         header = f"**{caption}**\n\n" if caption else ""
         (out / md_rel).write_text(header + df.to_markdown(index=False))
-        tables.append(TableArtifact(
-            index=i, page=_page_no(table), caption=caption,
-            md_path=md_rel, csv_path=csv_rel,
-            n_rows=int(df.shape[0]), n_cols=int(df.shape[1]),
-        ))
+        tables.append(
+            TableArtifact(
+                index=i,
+                page=_page_no(table),
+                caption=caption,
+                md_path=md_rel,
+                csv_path=csv_rel,
+                n_rows=int(df.shape[0]),
+                n_cols=int(df.shape[1]),
+            )
+        )
         ref = getattr(table, "self_ref", None)
         if ref is not None:
             table_markers[ref] = marker
@@ -187,9 +203,14 @@ def write_artifacts(doc: Any, out: Path, source_id: str, min_area: int) -> Parse
         png_rel = f"figures/{marker}.png"
         img.save(out / png_rel)
         caption = (pic.caption_text(doc) or "").strip() or None
-        figures.append(FigureArtifact(
-            index=saved, page=_page_no(pic), caption=caption, png_path=png_rel,
-        ))
+        figures.append(
+            FigureArtifact(
+                index=saved,
+                page=_page_no(pic),
+                caption=caption,
+                png_path=png_rel,
+            )
+        )
         ref = getattr(pic, "self_ref", None)
         if ref is not None:
             figure_markers[ref] = marker
@@ -221,7 +242,9 @@ def main(argv: Optional[List[str]] = None) -> int:
         options = json.loads(Path(argv[2]).read_text())
     try:
         parsed = parse(pdf_path, outdir, options)
-    except Exception as e:  # surface the failure to the parent via stderr + nonzero exit
+    except (
+        Exception
+    ) as e:  # surface the failure to the parent via stderr + nonzero exit
         print(f"ERROR: {e}", file=sys.stderr)
         return 1
     print(parsed.model_dump_json())

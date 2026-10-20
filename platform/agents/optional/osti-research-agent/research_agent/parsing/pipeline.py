@@ -31,7 +31,6 @@ import subprocess
 import sys
 import tarfile
 import tempfile
-import time
 from pathlib import Path
 from typing import Awaitable, Callable, Optional, Tuple
 
@@ -112,12 +111,27 @@ def _run_docling_worker_sync(
         f.write(_json.dumps(options))
         options_path = f.name
 
-    cmd = [sys.executable, "-m", "research_agent.parsing.docling_worker",
-           pdf_path, str(outdir), options_path]
-    env = {**os.environ, **_SUBPROCESS_ENV, "PYTHONPATH": root + os.pathsep + os.environ.get("PYTHONPATH", "")}
+    cmd = [
+        sys.executable,
+        "-m",
+        "research_agent.parsing.docling_worker",
+        pdf_path,
+        str(outdir),
+        options_path,
+    ]
+    env = {
+        **os.environ,
+        **_SUBPROCESS_ENV,
+        "PYTHONPATH": root + os.pathsep + os.environ.get("PYTHONPATH", ""),
+    }
     try:
         result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=timeout, cwd=root, env=env,
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            cwd=root,
+            env=env,
         )
     except subprocess.TimeoutExpired:
         logger.error("[parse] docling worker timed out after %ss", timeout)
@@ -132,7 +146,11 @@ def _run_docling_worker_sync(
             pass
 
     if result.returncode != 0:
-        logger.error("[parse] docling worker exited %s: %s", result.returncode, result.stderr[-500:])
+        logger.error(
+            "[parse] docling worker exited %s: %s",
+            result.returncode,
+            result.stderr[-500:],
+        )
         return None
     try:
         # meta.json on disk is the source of truth; stdout is a fallback.
@@ -145,7 +163,9 @@ def _run_docling_worker_sync(
             return None
 
 
-def _pymupdf_fallback(pdf_path: str, outdir: Path, source_id: str, page_count: Optional[int]) -> ParsedPaper:
+def _pymupdf_fallback(
+    pdf_path: str, outdir: Path, source_id: str, page_count: Optional[int]
+) -> ParsedPaper:
     text = pdf_convert._convert_pdf_with_pymupdf(pdf_path)
     (outdir / "paper.md").write_text(text, encoding="utf-8")
     parsed = ParsedPaper(
@@ -153,7 +173,9 @@ def _pymupdf_fallback(pdf_path: str, outdir: Path, source_id: str, page_count: O
         method="pymupdf",
         page_count=page_count,
         char_count=len(text),
-        warnings=["tables and figures unavailable (PyMuPDF fallback: docling failed or timed out)"],
+        warnings=[
+            "tables and figures unavailable (PyMuPDF fallback: docling failed or timed out)"
+        ],
     )
     parsed.write_meta(outdir)
     return parsed
@@ -230,7 +252,9 @@ async def parse_paper_pipeline(
 
     if parsed is None:
         # 4. Fallback to PyMuPDF full text; still emit one code path (paper.md).
-        await emit(f"Docling failed for OSTI #{source_id}; falling back to PyMuPDF text.")
+        await emit(
+            f"Docling failed for OSTI #{source_id}; falling back to PyMuPDF text."
+        )
         parsed = _pymupdf_fallback(pdf_path, out, source_id, page_count)
     else:
         await emit(
@@ -239,15 +263,24 @@ async def parse_paper_pipeline(
         # Optional figure analysis, disabled unless explicitly configured.
         if config.analyze_figures and parsed.figures:
             vlm_route = config.model_route("vlm")
-            vlm = vlm_complete or LiteLLMVlmClient(
-                vlm_route.base_url,
-                vlm_route.api_key,
-                vlm_route.model,
-            ).complete
-            await emit(f"Analyzing {min(len(parsed.figures), config.max_figures)} figure(s)...")
+            vlm = (
+                vlm_complete
+                or LiteLLMVlmClient(
+                    vlm_route.base_url,
+                    vlm_route.api_key,
+                    vlm_route.model,
+                ).complete
+            )
+            await emit(
+                f"Analyzing {min(len(parsed.figures), config.max_figures)} figure(s)..."
+            )
             parsed = await analyze_figures(
-                parsed, out, vlm,
-                max_figures=config.max_figures, deadline=deadline, cache=caches,
+                parsed,
+                out,
+                vlm,
+                max_figures=config.max_figures,
+                deadline=deadline,
+                cache=caches,
             )
             parsed.write_meta(out)
 
@@ -258,7 +291,11 @@ async def parse_paper_pipeline(
             if len(blob) <= _MAX_CACHE_BYTES:
                 caches.put_artifacts(source_id, blob, ttl_s=_CACHE_TTL_S)
             else:
-                logger.info("[parse] %s artifact dir too large to cache (%d bytes)", source_id, len(blob))
+                logger.info(
+                    "[parse] %s artifact dir too large to cache (%d bytes)",
+                    source_id,
+                    len(blob),
+                )
         except Exception as e:
             logger.warning("[parse] artifact cache write failed: %s", e)
 

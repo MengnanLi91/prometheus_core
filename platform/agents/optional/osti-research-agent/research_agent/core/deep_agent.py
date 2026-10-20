@@ -76,7 +76,7 @@ def _register_runtime_profiles(config: AgentConfig) -> None:
 
     for role in ("orchestrator", "analyzer", "verifier"):
         route = config.model_route(role)
-        profile_key = f"{route.provider}:{route.model}"
+        profile_key = f"litellm:{route.model}"
         if profile_key in _REGISTERED_PROFILE_KEYS:
             continue
         register_harness_profile(
@@ -152,7 +152,6 @@ def build_paper_verifier(config: AgentConfig, backend) -> Any:
         ModelCallLimitMiddleware,
         ToolCallLimitMiddleware,
     )
-    from langchain.agents.structured_output import ToolStrategy
 
     return create_deep_agent(
         model=chat_model(config, "verifier"),
@@ -163,7 +162,6 @@ def build_paper_verifier(config: AgentConfig, backend) -> Any:
             VERIFIER_MODEL_CALL_LIMIT,
             VERIFIER_TOOL_CALL_LIMIT,
         ),
-        response_format=ToolStrategy(VerificationResult),
         middleware=[
             ToolCallLimitMiddleware(
                 run_limit=VERIFIER_TOOL_CALL_LIMIT,

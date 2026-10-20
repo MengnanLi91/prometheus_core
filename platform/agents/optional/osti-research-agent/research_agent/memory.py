@@ -60,8 +60,12 @@ class ArtifactCache(Protocol):
     def put_figjson(self, source_id: str, idx: int, data: str, ttl_s: int) -> None: ...
 
 
-def _build_redis_client(redis_url: str, *, decode_responses: bool, password: Optional[str]) -> redis.Redis:
-    return redis.Redis.from_url(redis_url, decode_responses=decode_responses, password=password)
+def _build_redis_client(
+    redis_url: str, *, decode_responses: bool, password: Optional[str]
+) -> redis.Redis:
+    return redis.Redis.from_url(
+        redis_url, decode_responses=decode_responses, password=password
+    )
 
 
 class RedisCaches:
@@ -147,9 +151,7 @@ async def check_memory(
         return cached_payload
 
     # Check for relevant atomic facts.
-    atomic_facts = await search_relevant_atomic_facts(
-        question, complete, redis_client
-    )
+    atomic_facts = await search_relevant_atomic_facts(question, complete, redis_client)
 
     if atomic_facts and len(atomic_facts) >= 2:
         logger.info("Found %d relevant atomic facts in memory", len(atomic_facts))
@@ -159,7 +161,9 @@ async def check_memory(
 
         sufficient = bool(synthesized.get("sufficient_for_answer", False))
         if not sufficient:
-            logger.info("Knowledge-base synthesis found insufficient information; will fall back to live OSTI search.")
+            logger.info(
+                "Knowledge-base synthesis found insufficient information; will fall back to live OSTI search."
+            )
 
         synthesized["sufficient"] = sufficient
         synthesized["memory_source"] = "atomic_fact_synthesis"
@@ -208,7 +212,7 @@ async def search_relevant_atomic_facts(
     )
 
     try:
-        response_text = await complete(selection_prompt, max_tokens=1024, temperature=0)
+        response_text = await complete(selection_prompt, max_tokens=1024)
 
         selected_ids = extract_json_from_text(response_text) or []
         return [fact for fact in atomic_facts if fact["factoid_id"] in selected_ids]
@@ -223,12 +227,14 @@ async def synthesize_from_memory(
     complete: CompleteFn,
 ) -> Optional[Dict]:
     """Synthesize an answer from stored atomic facts."""
-    atomic_facts_text = "\n\n".join([
-        f"Fact {i}: {f['content']}\n"
-        f"Source: {f['source_paper'].get('title', 'Unknown')} (OSTI #{f['source_paper'].get('osti_id', 'N/A')})\n"
-        f"Confidence: {f.get('confidence', 0.5)}"
-        for i, f in enumerate(atomic_facts, 1)
-    ])
+    atomic_facts_text = "\n\n".join(
+        [
+            f"Fact {i}: {f['content']}\n"
+            f"Source: {f['source_paper'].get('title', 'Unknown')} (OSTI #{f['source_paper'].get('osti_id', 'N/A')})\n"
+            f"Confidence: {f.get('confidence', 0.5)}"
+            for i, f in enumerate(atomic_facts, 1)
+        ]
+    )
 
     prompt = SYNTHESIZE_MEMORY_PROMPT_TEMPLATE.format(
         question=question,
@@ -236,7 +242,7 @@ async def synthesize_from_memory(
     )
 
     try:
-        raw_text = await complete(prompt, max_tokens=2048, temperature=0)
+        raw_text = await complete(prompt, max_tokens=2048)
 
         parsed = extract_json_from_text(raw_text)
         if isinstance(parsed, dict):
@@ -252,7 +258,9 @@ async def synthesize_from_memory(
                 sufficient = sufficient_raw
             else:
                 sufficient = is_memory_answer_sufficient(answer_text)
-            missing_information = str(parsed.get("missing_information", "") or "").strip()
+            missing_information = str(
+                parsed.get("missing_information", "") or ""
+            ).strip()
         else:
             answer_text = raw_text.strip()
             confidence = 0.0
@@ -264,11 +272,11 @@ async def synthesize_from_memory(
             "sources": [
                 {
                     "source": f"OSTI #{f['source_paper'].get('osti_id', 'N/A')}",
-                    "osti_id": f['source_paper'].get('osti_id', ''),
-                    "title": f['source_paper'].get('title', 'Unknown'),
-                    "url": f['source_paper'].get('url', ''),
-                    "excerpt": f['content'][:500],
-                    "confidence": f.get('confidence', 0.5)
+                    "osti_id": f["source_paper"].get("osti_id", ""),
+                    "title": f["source_paper"].get("title", "Unknown"),
+                    "url": f["source_paper"].get("url", ""),
+                    "excerpt": f["content"][:500],
+                    "confidence": f.get("confidence", 0.5),
                 }
                 for f in atomic_facts
             ],
@@ -296,7 +304,7 @@ def cache_answer(
     cache_data = {
         "answer": answer,
         "sources": sources,
-        "cached_at": datetime.now(timezone.utc).isoformat()
+        "cached_at": datetime.now(timezone.utc).isoformat(),
     }
 
     # Store with 30-day TTL
@@ -328,27 +336,18 @@ def store_atomic_fact(
         "topics": topics,
         "confidence": 0.85,
         "extracted_at": datetime.now(timezone.utc).isoformat(),
-        "question_answered": question
+        "question_answered": question,
     }
 
     # Retain the legacy Redis key prefix for persisted-data compatibility.
-    redis_client.set(
-        f"osti:factoid:{fact_id}",
-        json.dumps(atomic_fact)
-    )
+    redis_client.set(f"osti:factoid:{fact_id}", json.dumps(atomic_fact))
 
     # Index by paper
     if source_paper.get("osti_id"):
-        redis_client.sadd(
-            f"osti:paper:{source_paper['osti_id']}:facts",
-            fact_id
-        )
+        redis_client.sadd(f"osti:paper:{source_paper['osti_id']}:facts", fact_id)
 
     # Index by topics
     for topic in topics:
-        redis_client.sadd(
-            f"osti:topic:{topic}:factoids",
-            fact_id
-        )
+        redis_client.sadd(f"osti:topic:{topic}:factoids", fact_id)
 
     return fact_id

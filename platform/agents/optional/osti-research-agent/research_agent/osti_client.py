@@ -78,7 +78,9 @@ def download_pdf_from_url(
         return None
 
     content_type = resp.headers.get("Content-Type", "")
-    if "application/pdf" not in content_type.lower() and not content.startswith(b"%PDF"):
+    if "application/pdf" not in content_type.lower() and not content.startswith(
+        b"%PDF"
+    ):
         logger.warning(f"URL is not a PDF (Content-Type={content_type!r}) at {url}")
         return None
 
@@ -129,15 +131,19 @@ def search_osti(search_query: str, max_results: int = 15) -> List[Dict[str, Any]
             logger.info(f"[OSTI API] Page {page}: Got {len(data)} records")
 
             for result in data:
-                if 'description' in result and 'osti_id' in result:
-                    results.append({
-                        "osti_id": result["osti_id"],
-                        "title": result.get("title", ""),
-                        "description": result.get("description", ""),
-                        "journal_name": result.get("journal_name", ""),
-                        "url": f"https://www.osti.gov/biblio/{result['osti_id']}"
-                    })
-                    logger.info(f"[OSTI API] Added: {result.get('title', 'No title')[:60]}...")
+                if "description" in result and "osti_id" in result:
+                    results.append(
+                        {
+                            "osti_id": result["osti_id"],
+                            "title": result.get("title", ""),
+                            "description": result.get("description", ""),
+                            "journal_name": result.get("journal_name", ""),
+                            "url": f"https://www.osti.gov/biblio/{result['osti_id']}",
+                        }
+                    )
+                    logger.info(
+                        f"[OSTI API] Added: {result.get('title', 'No title')[:60]}..."
+                    )
 
                     if len(results) >= max_results:
                         break
@@ -146,7 +152,7 @@ def search_osti(search_query: str, max_results: int = 15) -> List[Dict[str, Any]
 
             # Safety limit to prevent infinite loops
             if page > 5:
-                logger.info(f"[OSTI API] Reached page limit, stopping")
+                logger.info("[OSTI API] Reached page limit, stopping")
                 break
 
         except Exception as e:
@@ -160,7 +166,7 @@ def search_osti(search_query: str, max_results: int = 15) -> List[Dict[str, Any]
 
 def download_paper(osti_id: str, cache: Optional[PdfCache] = None) -> Optional[str]:
     """Download paper from OSTI, using `cache` (if provided) to avoid repeat downloads."""
-    filepath = f'/tmp/osti_{osti_id}.pdf'
+    filepath = f"/tmp/osti_{osti_id}.pdf"
 
     # Check if file exists locally first
     if os.path.exists(filepath):
@@ -172,31 +178,37 @@ def download_paper(osti_id: str, cache: Optional[PdfCache] = None) -> Optional[s
         try:
             pdf_bytes = cache.get_pdf(osti_id)
             if pdf_bytes:
-                logger.info(f"Paper {osti_id} found in Redis cache ({len(pdf_bytes)} bytes)")
-                with open(filepath, 'wb') as f:
+                logger.info(
+                    f"Paper {osti_id} found in Redis cache ({len(pdf_bytes)} bytes)"
+                )
+                with open(filepath, "wb") as f:
                     f.write(pdf_bytes)
                 return filepath
         except Exception as e:
             logger.warning(f"Redis cache check failed: {e}")
 
     # Download from OSTI
-    url = f'https://www.osti.gov/servlets/purl/{osti_id}'
+    url = f"https://www.osti.gov/servlets/purl/{osti_id}"
     logger.info(f"Downloading paper {osti_id} from OSTI...")
 
     try:
         session = requests.Session()
         response = session.get(url, verify=False, timeout=120)
 
-        if response.status_code == 200 and 'application/pdf' in response.headers.get('Content-Type', ''):
+        if response.status_code == 200 and "application/pdf" in response.headers.get(
+            "Content-Type", ""
+        ):
             # Save to local file
-            with open(filepath, 'wb') as f:
+            with open(filepath, "wb") as f:
                 f.write(response.content)
 
             # Cache (30 day TTL)
             if cache is not None:
                 try:
                     cache.put_pdf(osti_id, response.content, ttl_s=30 * 24 * 3600)
-                    logger.info(f"Paper {osti_id} cached in Redis ({len(response.content)} bytes)")
+                    logger.info(
+                        f"Paper {osti_id} cached in Redis ({len(response.content)} bytes)"
+                    )
                 except Exception as e:
                     logger.warning(f"Failed to cache paper in Redis: {e}")
 

@@ -33,7 +33,7 @@ if TYPE_CHECKING:  # Keep optional LangChain imports out of module initializatio
 logger = logging.getLogger(__name__)
 
 CompleteFn = Callable[..., Awaitable[str]]
-# (prompt, images: list[bytes], *, max_tokens, temperature) -> str
+# (prompt, images: list[bytes], *, max_tokens) -> str
 VlmCompleteFn = Callable[..., Awaitable[str]]
 # text -> embedding vector
 EmbedFn = Callable[[str], Awaitable[List[float]]]
@@ -50,24 +50,14 @@ def chat_model(
     use their configured provider endpoint, key, and model. Imported lazily so
     the pipeline engine and the CLI never pull in LangChain provider packages.
     """
+    from langchain_litellm import ChatLiteLLM
+
     route = config.model_route(role)
-    if route.provider == "anthropic":
-        from langchain_anthropic import ChatAnthropic
-
-        return ChatAnthropic(
-            base_url=route.base_url.rstrip("/"),
-            api_key=route.api_key or "not-needed",
-            model_name=route.model,
-            temperature=0,
-        )
-
-    from langchain_openai import ChatOpenAI
-
-    return ChatOpenAI(
-        base_url=route.base_url.rstrip("/"),
+    return ChatLiteLLM(
+        api_base=route.base_url.rstrip("/"),
         api_key=route.api_key or "not-needed",
         model=route.model,
-        temperature=0,
+        custom_llm_provider=route.provider,
     )
 
 
@@ -79,9 +69,7 @@ class LiteLLMClient:
         self._api_key = api_key
         self._model = model
 
-    async def complete(
-        self, prompt: str, *, max_tokens: int, temperature: float = 0
-    ) -> str:
+    async def complete(self, prompt: str, *, max_tokens: int) -> str:
         headers = {}
         if self._api_key:
             headers["Authorization"] = f"Bearer {self._api_key}"
@@ -94,7 +82,6 @@ class LiteLLMClient:
                     "model": self._model,
                     "messages": [{"role": "user", "content": prompt}],
                     "max_tokens": max_tokens,
-                    "temperature": temperature,
                 },
             )
             response.raise_for_status()
@@ -156,7 +143,6 @@ class LiteLLMVlmClient:
         images: List[bytes],
         *,
         max_tokens: int,
-        temperature: float = 0,
     ) -> str:
         headers = {}
         if self._api_key:
@@ -180,7 +166,6 @@ class LiteLLMVlmClient:
                     "model": self._model,
                     "messages": [{"role": "user", "content": content}],
                     "max_tokens": max_tokens,
-                    "temperature": temperature,
                 },
             )
             response.raise_for_status()

@@ -39,9 +39,19 @@ def test_pymupdf_used_first_docling_not_called(tmp_path, monkeypatch):
     pdf_path = tmp_path / "osti_1111.pdf"
     pdf_path.write_bytes(b"stub")
 
-    monkeypatch.setattr(pdf_convert, "_convert_pdf_with_pymupdf", MagicMock(return_value="X" * 200))
-    monkeypatch.setattr(pdf_convert, "_convert_pdf_with_docling_subprocess", MagicMock(return_value="DOC" * 200))
-    monkeypatch.setattr(pdf_convert, "_convert_pdf_with_marker_subprocess", MagicMock(return_value="MARKER" * 200))
+    monkeypatch.setattr(
+        pdf_convert, "_convert_pdf_with_pymupdf", MagicMock(return_value="X" * 200)
+    )
+    monkeypatch.setattr(
+        pdf_convert,
+        "_convert_pdf_with_docling_subprocess",
+        MagicMock(return_value="DOC" * 200),
+    )
+    monkeypatch.setattr(
+        pdf_convert,
+        "_convert_pdf_with_marker_subprocess",
+        MagicMock(return_value="MARKER" * 200),
+    )
 
     text = pdf_convert.convert_pdf_sync(str(pdf_path))
 
@@ -54,9 +64,19 @@ def test_falls_back_to_docling_when_pymupdf_insufficient(tmp_path, monkeypatch):
     pdf_path = tmp_path / "osti_2222.pdf"
     pdf_path.write_bytes(b"stub")
 
-    monkeypatch.setattr(pdf_convert, "_convert_pdf_with_pymupdf", MagicMock(return_value="short text"))
-    monkeypatch.setattr(pdf_convert, "_convert_pdf_with_docling_subprocess", MagicMock(return_value="DOC" * 200))
-    monkeypatch.setattr(pdf_convert, "_convert_pdf_with_marker_subprocess", MagicMock(return_value="MARKER" * 200))
+    monkeypatch.setattr(
+        pdf_convert, "_convert_pdf_with_pymupdf", MagicMock(return_value="short text")
+    )
+    monkeypatch.setattr(
+        pdf_convert,
+        "_convert_pdf_with_docling_subprocess",
+        MagicMock(return_value="DOC" * 200),
+    )
+    monkeypatch.setattr(
+        pdf_convert,
+        "_convert_pdf_with_marker_subprocess",
+        MagicMock(return_value="MARKER" * 200),
+    )
 
     text = pdf_convert.convert_pdf_sync(str(pdf_path))
 
@@ -65,13 +85,23 @@ def test_falls_back_to_docling_when_pymupdf_insufficient(tmp_path, monkeypatch):
     pdf_convert._convert_pdf_with_marker_subprocess.assert_not_called()
 
 
-def test_falls_back_to_marker_when_pymupdf_and_docling_insufficient(tmp_path, monkeypatch):
+def test_falls_back_to_marker_when_pymupdf_and_docling_insufficient(
+    tmp_path, monkeypatch
+):
     pdf_path = tmp_path / "osti_3333.pdf"
     pdf_path.write_bytes(b"stub")
 
-    monkeypatch.setattr(pdf_convert, "_convert_pdf_with_pymupdf", MagicMock(return_value="short text"))
-    monkeypatch.setattr(pdf_convert, "_convert_pdf_with_docling_subprocess", MagicMock(return_value=""))
-    monkeypatch.setattr(pdf_convert, "_convert_pdf_with_marker_subprocess", MagicMock(return_value="MARKER" * 200))
+    monkeypatch.setattr(
+        pdf_convert, "_convert_pdf_with_pymupdf", MagicMock(return_value="short text")
+    )
+    monkeypatch.setattr(
+        pdf_convert, "_convert_pdf_with_docling_subprocess", MagicMock(return_value="")
+    )
+    monkeypatch.setattr(
+        pdf_convert,
+        "_convert_pdf_with_marker_subprocess",
+        MagicMock(return_value="MARKER" * 200),
+    )
 
     text = pdf_convert.convert_pdf_sync(str(pdf_path))
 
@@ -80,7 +110,9 @@ def test_falls_back_to_marker_when_pymupdf_and_docling_insufficient(tmp_path, mo
     pdf_convert._convert_pdf_with_marker_subprocess.assert_called_once()
 
 
-def test_docling_subprocess_failure_returns_empty_and_does_not_raise(tmp_path, monkeypatch):
+def test_docling_subprocess_failure_returns_empty_and_does_not_raise(
+    tmp_path, monkeypatch
+):
     pdf_path = tmp_path / "osti_4444.pdf"
     pdf_path.write_bytes(b"stub")
 
@@ -109,7 +141,9 @@ def test_async_uses_v2_cache_key(tmp_path, monkeypatch):
     fake_cache = FakeTextCache()
     monkeypatch.setattr(pdf_convert, "convert_pdf_sync", lambda path: "converted text")
 
-    result = asyncio.run(pdf_convert.convert_pdf_to_text_async(str(pdf_path), cache=fake_cache))
+    result = asyncio.run(
+        pdf_convert.convert_pdf_to_text_async(str(pdf_path), cache=fake_cache)
+    )
 
     assert result == "converted text"
     assert fake_cache.get_keys[0] == "osti:paper:text:v2:5555"

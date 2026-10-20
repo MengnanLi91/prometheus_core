@@ -15,7 +15,6 @@ tested directly here (evals/run.py, which needs live services, is not)."""
 
 from evals import scoring
 
-
 # --- citation_link_rate ---------------------------------------------------
 
 
@@ -69,7 +68,9 @@ def test_fact_match_empty_expectation_is_one():
 
 
 def test_provenance_ok_requires_sources_only_for_completed():
-    assert scoring.provenance_ok({"status": "completed", "provenance": [{"x": 1}]}) is True
+    assert (
+        scoring.provenance_ok({"status": "completed", "provenance": [{"x": 1}]}) is True
+    )
     assert scoring.provenance_ok({"status": "completed", "provenance": []}) is False
     # no_results legitimately cites nothing; error/timeout aren't held to it
     assert scoring.provenance_ok({"status": "no_results", "provenance": []}) is True
@@ -114,12 +115,33 @@ def test_score_result_shape():
 
 def test_aggregate_medians_and_counts():
     records = [
-        {"engine": "deepagent", "status_match": True, "provenance_ok": True,
-         "citation_link_rate": 1.0, "source_hit_rate": 1.0, "fact_match": 1.0, "wall_s": 10.0},
-        {"engine": "deepagent", "status_match": False, "provenance_ok": True,
-         "citation_link_rate": 0.5, "source_hit_rate": 0.0, "fact_match": 0.5, "wall_s": 30.0},
-        {"engine": "pipeline", "status_match": True, "provenance_ok": False,
-         "citation_link_rate": 1.0, "source_hit_rate": 1.0, "fact_match": 0.0, "wall_s": 20.0},
+        {
+            "engine": "deepagent",
+            "status_match": True,
+            "provenance_ok": True,
+            "citation_link_rate": 1.0,
+            "source_hit_rate": 1.0,
+            "fact_match": 1.0,
+            "wall_s": 10.0,
+        },
+        {
+            "engine": "deepagent",
+            "status_match": False,
+            "provenance_ok": True,
+            "citation_link_rate": 0.5,
+            "source_hit_rate": 0.0,
+            "fact_match": 0.5,
+            "wall_s": 30.0,
+        },
+        {
+            "engine": "pipeline",
+            "status_match": True,
+            "provenance_ok": False,
+            "citation_link_rate": 1.0,
+            "source_hit_rate": 1.0,
+            "fact_match": 0.0,
+            "wall_s": 20.0,
+        },
     ]
     agg = scoring.aggregate(records)
     assert agg["deepagent"]["n"] == 2

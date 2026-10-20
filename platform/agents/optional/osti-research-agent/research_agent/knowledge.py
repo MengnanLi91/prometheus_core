@@ -300,7 +300,9 @@ class RedisKnowledgeStore:
             except (json.JSONDecodeError, TypeError):
                 continue
             if isinstance(obj, dict):
-                obj["_key"] = key if isinstance(key, str) else key.decode("utf-8", "replace")
+                obj["_key"] = (
+                    key if isinstance(key, str) else key.decode("utf-8", "replace")
+                )
                 out.append(obj)
         return out
 

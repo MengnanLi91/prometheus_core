@@ -43,7 +43,9 @@ def _parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
         action="store_true",
         help="Run without Redis: skips the knowledge base and PDF/text caching",
     )
-    parser.add_argument("--workdir", default=None, help="Where to write result.json (default: ./out)")
+    parser.add_argument(
+        "--workdir", default=None, help="Where to write result.json (default: ./out)"
+    )
     parser.add_argument("--run-id", default="cli", help="Run id used in logs")
     return parser.parse_args(argv)
 

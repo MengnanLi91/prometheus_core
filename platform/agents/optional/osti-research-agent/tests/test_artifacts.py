@@ -31,9 +31,13 @@ def test_meta_roundtrip(tmp_path):
         method="docling",
         tables=[
             TableArtifact(
-                index=1, page=2, caption="Results",
-                md_path="tables/table_01.md", csv_path="tables/table_01.csv",
-                n_rows=3, n_cols=4,
+                index=1,
+                page=2,
+                caption="Results",
+                md_path="tables/table_01.md",
+                csv_path="tables/table_01.csv",
+                n_rows=3,
+                n_cols=4,
             )
         ],
         figures=[FigureArtifact(index=1, page=5, png_path="figures/fig_01.png")],
@@ -64,9 +68,15 @@ def test_safe_source_id_removes_separators():
 
 
 def test_largest_tables_orders_by_cell_count():
-    t1 = TableArtifact(index=1, md_path="a.md", csv_path="a.csv", n_rows=2, n_cols=2)   # 4
-    t2 = TableArtifact(index=2, md_path="b.md", csv_path="b.csv", n_rows=10, n_cols=5)  # 50
-    t3 = TableArtifact(index=3, md_path="c.md", csv_path="c.csv", n_rows=3, n_cols=3)   # 9
+    t1 = TableArtifact(
+        index=1, md_path="a.md", csv_path="a.csv", n_rows=2, n_cols=2
+    )  # 4
+    t2 = TableArtifact(
+        index=2, md_path="b.md", csv_path="b.csv", n_rows=10, n_cols=5
+    )  # 50
+    t3 = TableArtifact(
+        index=3, md_path="c.md", csv_path="c.csv", n_rows=3, n_cols=3
+    )  # 9
     parsed = ParsedPaper(source_id="x", method="docling", tables=[t1, t2, t3])
 
     top = parsed.largest_tables(2)

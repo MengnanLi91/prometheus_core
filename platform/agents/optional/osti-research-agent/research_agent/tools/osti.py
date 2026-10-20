@@ -33,7 +33,7 @@ from langchain_core.tools import BaseTool, tool
 
 from research_agent import osti_client
 from research_agent.parsing import pipeline as parse_pipeline
-from research_agent.parsing.artifacts import ParsedPaper, _safe_source_id, paper_dir
+from research_agent.parsing.artifacts import ParsedPaper, _safe_source_id
 from research_agent.tools import progress
 from research_agent.tools.context import RunContext
 

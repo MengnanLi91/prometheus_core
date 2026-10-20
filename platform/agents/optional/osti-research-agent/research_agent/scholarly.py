@@ -48,7 +48,7 @@ def _doi_slug(doi: Optional[str]) -> Optional[str]:
     doi = doi.strip()
     for prefix in ("https://doi.org/", "http://doi.org/", "doi:"):
         if doi.lower().startswith(prefix):
-            doi = doi[len(prefix):]
+            doi = doi[len(prefix) :]
             break
     doi = doi.strip("/")
     if not doi:
@@ -99,12 +99,16 @@ def _openalex_hit(work: dict) -> dict:
     }
 
 
-async def search_openalex(query: str, k: int = 10, *, mailto: Optional[str] = None) -> List[dict]:
+async def search_openalex(
+    query: str, k: int = 10, *, mailto: Optional[str] = None
+) -> List[dict]:
     params = {"search": query, "per-page": max(1, min(k, 50))}
     if mailto:
         params["mailto"] = mailto
     try:
-        async with httpx.AsyncClient(timeout=_TIMEOUT, headers={"User-Agent": _USER_AGENT}) as client:
+        async with httpx.AsyncClient(
+            timeout=_TIMEOUT, headers={"User-Agent": _USER_AGENT}
+        ) as client:
             resp = await client.get(OPENALEX_URL, params=params)
             resp.raise_for_status()
             data = resp.json()
@@ -148,9 +152,15 @@ def _arxiv_entry(entry: ET.Element) -> dict:
 
 
 async def search_arxiv(query: str, k: int = 5) -> List[dict]:
-    params = {"search_query": f"all:{query}", "start": 0, "max_results": max(1, min(k, 30))}
+    params = {
+        "search_query": f"all:{query}",
+        "start": 0,
+        "max_results": max(1, min(k, 30)),
+    }
     try:
-        async with httpx.AsyncClient(timeout=_TIMEOUT, headers={"User-Agent": _USER_AGENT}) as client:
+        async with httpx.AsyncClient(
+            timeout=_TIMEOUT, headers={"User-Agent": _USER_AGENT}
+        ) as client:
             resp = await client.get(ARXIV_URL, params=params)
             resp.raise_for_status()
             root = ET.fromstring(resp.text)
@@ -166,7 +176,9 @@ def _dedupe_key(hit: dict) -> str:
     return "title:" + "".join(c for c in hit.get("title", "").lower() if c.isalnum())
 
 
-async def search_scholarly(query: str, k: int = 10, *, mailto: Optional[str] = None) -> List[dict]:
+async def search_scholarly(
+    query: str, k: int = 10, *, mailto: Optional[str] = None
+) -> List[dict]:
     """OpenAlex first (comprehensive index), then arXiv preprints to fill in.
     Deduped by DOI/title, capped at ``k``."""
     openalex, arxiv = await asyncio.gather(
