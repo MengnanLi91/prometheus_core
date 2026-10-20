@@ -5,7 +5,35 @@ changes. When a base-agent change requires downstream agent updates, add a short
 section here under the relevant version heading with migration steps and a
 minimal code example.
 
-## Unreleased
+## 0.14.0
+
+### LLM Credentials No Longer Come from A2A Requests
+
+`LLMClient.from_a2a_context(...)`, `AsyncLLMClient.from_a2a_context(...)` and
+`extract_llm_api_key_from_a2a_context(...)` were removed. They read an `llm_api_key` from
+any structured A2A data part (top-level or under `provided_inputs`) and used it as the
+LLM credential. Nothing in the platform sent one, but the path let a credential travel on
+the parameter channel. `PrometheusAgent.llm_client(context)` keeps its signature and now
+takes credentials only from `config` or the environment. A request-independent
+credential provider will be designed separately.
+
+Migration steps:
+
+1. Replace `AsyncLLMClient.from_a2a_context(context, ...)` with `AsyncLLMClient(...)`,
+   and `LLMClient.from_a2a_context(...)` with `LLMClient(...)`. Keep passing `config=`
+   and `app_name=`.
+2. Drop imports of `extract_llm_api_key_from_a2a_context` from `prometheus_api.llm_client`.
+3. Do not ask the user for LLM keys with `INPUT_REQUIRED`, and do not send them in A2A
+   messages. A key sent that way is now ignored.
+4. Inside a `PrometheusAgent`, keep using `self.llm_client(context)`; no change needed.
+
+```python
+config = LLMConfig.from_env()
+if config.proxy_url:
+    config = config.with_api_key(os.getenv("LITELLM_MASTER_KEY"))
+async with AsyncLLMClient(config=config, app_name="My Agent") as llm:
+    response = await llm.medium(prompt)
+```
 
 ### The Health Endpoint Moved from `/health` to `/healthz`
 
