@@ -1007,19 +1007,17 @@ async def _run_workflow(call: Dict[str, Any], state: Dict[str, Any]) -> None:
             names = {str(item.get("name") or "") for item in record.get("missing_inputs") or []}
             step_inputs = {name: value for name, value in provided.items() if name in names}
             # The call's arguments now hold every answer; a step gets only its own.
-            step_params = {
-                key: value
-                for key, value in _invocation_params(call, state).items()
-                if key not in provided or key in names
-            }
-            step_params["_input_sources"] = {
-                key: source
-                for key, source in (step_params.get("_input_sources") or {}).items()
-                if key not in provided or key in names
-            }
+            step_params = {key: value for key, value in _invocation_params(call, state).items() if key not in provided}
+            sources = {key: src for key, src in step_params.pop("_input_sources", {}).items() if key not in provided}
             resumed = await invoke_skill(
                 record["skill_id"],
-                {**step_params, **step_inputs, "provided_inputs": step_inputs, **_a2a_resume_fields(record)},
+                {
+                    **step_params,
+                    **step_inputs,
+                    "_input_sources": {**sources, **{name: "user" for name in step_inputs}},
+                    "provided_inputs": step_inputs,
+                    **_a2a_resume_fields(record),
+                },
                 conversation_id,
             )
             if resumed.get("input_required"):
