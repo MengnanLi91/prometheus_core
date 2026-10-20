@@ -1010,14 +1010,14 @@ class PrometheusAgent:
         return provided
 
     def llm_client(self, context: RequestContext, **kwargs: Any) -> Any:
-        """Create an AsyncLLMClient that inherits this agent's name for tracing."""
+        """Create an AsyncLLMClient that inherits this agent's name for tracing.
+
+        Credentials come from ``config`` or the environment, never from the A2A
+        request.
+        """
         from ..llm_client import AsyncLLMClient
 
-        return AsyncLLMClient.from_a2a_context(
-            context,
-            app_name=self.agent_name,
-            **kwargs,
-        )
+        return AsyncLLMClient(app_name=self.agent_name, **kwargs)
 
     @staticmethod
     def pending_hint(

@@ -689,13 +689,16 @@ workflows:
                 assert "workflows" not in payload
                 ParseDict(payload, AgentCard())
 
-    def test_llm_client_helper_inherits_agent_name_and_context_key(self):
+    def test_llm_client_helper_inherits_agent_name_and_ignores_request_keys(self):
         agent = PrometheusAgent(agent_name="Trace Agent")
         context = MagicMock(spec=RequestContext)
         context.message.parts = [
             Part(
                 data=ParseDict(
-                    {"provided_inputs": {"llm_api_key": "structured-key"}},
+                    {
+                        "provided_inputs": {"llm_api_key": "request-key"},
+                        "llm_api_key": "request-key",
+                    },
                     Value(),
                 )
             )
@@ -705,7 +708,7 @@ workflows:
 
         assert isinstance(client, AsyncLLMClient)
         assert client.config.app_name == "Trace Agent"
-        assert client.config.api_key == "structured-key"
+        assert client.config.api_key is None
 
     def test_default_lifespan_is_a_no_op(self):
         agent = PrometheusAgent(agent_name="MyAgent")
