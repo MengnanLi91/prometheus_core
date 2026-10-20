@@ -1,0 +1,10 @@
+Given this research question and these stored atomic facts from literature,
+select the most relevant atomic facts that could help answer the question.
+
+QUESTION: {question}
+
+AVAILABLE ATOMIC FACTS:
+{atomic_facts_json}
+
+Return a JSON array of relevant atomic-fact IDs: ["id1", "id2", ...]
+If none are relevant, return [].

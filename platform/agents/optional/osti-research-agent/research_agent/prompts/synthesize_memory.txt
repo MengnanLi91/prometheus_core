@@ -3,7 +3,7 @@ Based on these facts from our knowledge base, answer the research question.
 QUESTION: {question}
 
 KNOWN FACTS:
-{factoids_text}
+{atomic_facts_text}
 
 Decide whether the known facts are sufficient to answer the question well.
 If they are not sufficient, clearly say so and state what is missing.

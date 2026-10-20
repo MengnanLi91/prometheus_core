@@ -1,0 +1,140 @@
+# Parity evaluation question set.
+#
+# ~20 questions: 10 core dev questions (DOE/nuclear materials, answerable from
+# OSTI), 5 open-literature/web-only and repeat-for-cache questions, and
+# 5 adversarial (ambiguous, no-answer, figure-only, cache, breadth).
+#
+# Per question:
+#   id                 stable slug (used in the score report)
+#   question           the prompt sent to both engines
+#   category           core | scholarly | web | cache | adversarial
+#   expected_source_ids (optional) OSTI ids / DOI slugs expected in provenance
+#   expected_facts     (optional) substrings/numbers expected in the answer
+#   expect_status      (optional) completed | no_results | ...
+#   notes              why this question is in the set
+#
+# expected_source_ids / expected_facts are intentionally left blank where the
+# "correct" source isn't pinned yet - fill them in from a first golden run
+# before reading the acceptance bar (adjust the bar before running, not after).
+
+questions:
+  # --- core dev set (OSTI-answerable) ---
+  - id: ss316-creep-400c
+    question: "What is the creep rate of stainless steel 316 at 400C and 15 MPa?"
+    category: core
+    expected_facts: ["316"]
+    expect_status: completed
+    notes: "Canonical creep question; numeric answer in OSTI creep studies."
+
+  - id: triso-safe-temperature
+    question: "What operating temperature is considered safe for TRISO fuel particles?"
+    category: core
+    expected_facts: ["TRISO"]
+    expect_status: completed
+
+  - id: zircaloy-oxidation-kinetics
+    question: "What are the oxidation kinetics of Zircaloy-4 cladding in high-temperature steam?"
+    category: core
+    expected_facts: ["Zircaloy"]
+    expect_status: completed
+
+  - id: inconel-718-fatigue
+    question: "How does irradiation affect the fatigue life of Inconel 718?"
+    category: core
+    expect_status: completed
+
+  - id: graphite-irradiation-swelling
+    question: "How much does nuclear-grade graphite swell under fast-neutron irradiation?"
+    category: core
+    expect_status: completed
+
+  - id: ss304-thermal-conductivity
+    question: "What is the thermal conductivity of stainless steel 304 at 600C?"
+    category: core
+    expected_facts: ["304"]
+    expect_status: completed
+
+  - id: uo2-thermal-conductivity
+    question: "How does the thermal conductivity of UO2 fuel change with burnup?"
+    category: core
+    expected_facts: ["UO2"]
+    expect_status: completed
+
+  - id: he-embrittlement-steels
+    question: "What causes helium embrittlement in structural steels for fusion reactors?"
+    category: core
+    expect_status: completed
+
+  - id: sic-swelling-irradiation
+    question: "What is the irradiation swelling behavior of silicon carbide at 300-800C?"
+    category: core
+    expect_status: completed
+
+  - id: fecral-corrosion-accident
+    question: "How do FeCrAl alloys perform against high-temperature steam oxidation in accident conditions?"
+    category: core
+    expected_facts: ["FeCrAl"]
+    expect_status: completed
+
+  # --- Open-literature, web-only, and cache coverage ---
+  - id: openalex-recent-review
+    question: "What do recent review articles say about additive manufacturing of 316L for nuclear service?"
+    category: scholarly
+    expected_facts: ["316L"]
+    expect_status: completed
+    notes: "Answerable via OpenAlex/arXiv when OSTI is thin; checks non-OSTI provenance."
+
+  - id: arxiv-ml-materials
+    question: "How is machine learning being applied to predict irradiation-induced defects in metals?"
+    category: scholarly
+    expect_status: completed
+    notes: "Preprint-heavy topic; exercises the arXiv path."
+
+  - id: web-standard-astm
+    question: "Which ASTM standard governs charpy impact testing of reactor pressure vessel steels?"
+    category: web
+    expect_status: completed
+    notes: "Context/standards lookup; only meaningful when a web provider is configured."
+
+  - id: cache-repeat-ss316-creep
+    question: "What is the creep rate of stainless steel 316 at 400C and 15 MPa?"
+    category: cache
+    expect_status: completed
+    notes: "Duplicate of ss316-creep-400c; run second, expect cached answer, no downloads."
+
+  - id: cache-repeat-triso
+    question: "What operating temperature is considered safe for TRISO fuel particles?"
+    category: cache
+    expect_status: completed
+    notes: "Duplicate of triso-safe-temperature; expect memory hit."
+
+  # --- adversarial ---
+  - id: adversarial-ambiguous
+    question: "Is it safe?"
+    category: adversarial
+    notes: "Ambiguous phrasing; expect a clarifying or appropriately limited answer, not a crash."
+
+  - id: adversarial-no-answer
+    question: "What is the measured creep rate of unobtainium-42 at 1200C under 900 MPa?"
+    category: adversarial
+    expect_status: no_results
+    notes: "No literature answer exists; expect honest no_results, not fabrication."
+
+  - id: adversarial-figure-only
+    question: "According to published Arrhenius plots, what activation energy governs creep in alloy 617?"
+    category: adversarial
+    expected_facts: ["617"]
+    expect_status: completed
+    notes: "Answer lives in a figure; the pipeline engine structurally cannot read it."
+
+  - id: adversarial-cache-figure-repeat
+    question: "According to published Arrhenius plots, what activation energy governs creep in alloy 617?"
+    category: adversarial
+    expect_status: completed
+    notes: "Repeat of the figure question; cache behavior on a figure-derived answer."
+
+  - id: adversarial-broad
+    question: "Tell me everything known about materials degradation in nuclear reactors."
+    category: adversarial
+    expect_status: completed
+    notes: "Very broad; tests budget discipline (must not run away downloading papers)."
