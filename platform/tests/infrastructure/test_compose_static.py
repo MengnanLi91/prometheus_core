@@ -64,11 +64,56 @@ def test_redis_service_uses_valkey_bundle(compose_data):
     assert svc["command"][:1] == ["valkey-server"]
 
 
-def test_litellm_image_pinned(compose_data):
-    image = compose_data["services"]["litellm"]["image"]
-    assert image == "ghcr.io/berriai/litellm:v1.92.0", (
+def test_litellm_image_pinned_and_extended_with_local_certificates(compose_data, project_root):
+    service = compose_data["services"]["litellm"]
+    build = service["build"]
+    assert build["context"] == "."
+    assert build["dockerfile"] == "litellm.Dockerfile"
+    assert build["additional_contexts"]["certs"] == "../common/certs"
+    assert build["args"]["LITELLM_BASE_IMAGE"] == "ghcr.io/berriai/litellm:v1.92.0", (
         "LiteLLM 1.92.0 is the minimum pinned gateway with A2A SDK v1 routing"
     )
+
+    dockerfile = (project_root / "litellm.Dockerfile").read_text(encoding="utf-8")
+    assert "FROM ${LITELLM_BASE_IMAGE}" in dockerfile
+    assert "COPY --from=certs" in dockerfile
+    assert "SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt" in dockerfile
+
+
+def test_osti_optional_compose_preserves_platform_contract(project_root):
+    path = project_root / "agents" / "optional" / "osti-research-agent" / "docker-compose.yml"
+    service = yaml.safe_load(path.read_text(encoding="utf-8"))["services"]["osti-research-agent"]
+
+    assert service["extra_hosts"] == ["prometheus.host.internal:host-gateway"]
+    assert service["build"]["args"][:2] == [
+        "PROMETHEUS_API_BASE_IMAGE_REPO=${PROMETHEUS_API_BASE_IMAGE_REPO:-containers.github.inl.gov/genesis/prometheus_api}",
+        "PROMETHEUS_API_BASE_IMAGE_HASH=${PROMETHEUS_API_BASE_IMAGE_HASH}",
+    ]
+    assert service["depends_on"] == {
+        "litellm": {"condition": "service_healthy"},
+        "redis": {"condition": "service_started"},
+    }
+
+    environment = service["environment"]
+    for key, expected in {
+        "LLM_API_KEY": "${LLM_API_KEY:-}",
+        "EMBEDDING_API_KEY": "${EMBEDDING_API_KEY:-}",
+        "JWKS_URL": "${JWKS_URL:-http://backend:8000/.well-known/jwks.json}",
+        "USER_IDENTITY_ISS": "${USER_IDENTITY_ISS:-prometheus-platform}",
+        "USER_IDENTITY_AUD": "${USER_IDENTITY_AUD:-prometheus-agents}",
+        "USER_IDENTITY_REQUIRED": "${USER_IDENTITY_REQUIRED:-true}",
+        "AGENT_ENGINE": "${AGENT_ENGINE:-deepagent}",
+        "PARSER": "${PARSER:-artifacts}",
+        "WEB_SEARCH_PROVIDER": "${WEB_SEARCH_PROVIDER:-none}",
+        "EMBEDDING_MODEL": "${EMBEDDING_MODEL:-embedding}",
+    }.items():
+        assert environment[key] == expected
+
+
+def test_osti_agent_remains_gated_by_optional_agents(project_root):
+    makefile = (project_root / "Makefile").read_text(encoding="utf-8")
+    optional_block = makefile.split("ifeq ($(OPTIONAL_AGENTS),true)", 1)[1].split("endif", 1)[0]
+    assert "agents/optional" in optional_block
 
 
 def test_client_agent_receives_selectable_llm_configuration(compose_data):

@@ -86,3 +86,6 @@ Three layers — only the first is automatic:
 Set the bar before running, not after. Latency may regress somewhat versus the
 fixed pipeline — the deep engine trades some speed for coverage — as long as it
 stays under the p90 ceiling and quality wins.
+
+This is a manually initiated parity gate. It does not require a fixed-duration
+production soak before it is run.
