@@ -47,7 +47,7 @@ export function Header({ title, onLogout, onToggleSettings }: Props) {
           <span>/</span>
           <span className="text-primary">{title}</span>
         </div>
-        <h1 className="text-roboto m-0 text-lg font-bold text-base-content">{title}</h1>
+        <h1 className="m-0 text-lg font-bold text-base-content">{title}</h1>
       </div>
 
       <div className="flex items-center gap-3">

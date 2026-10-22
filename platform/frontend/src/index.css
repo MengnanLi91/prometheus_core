@@ -21,7 +21,7 @@
   name: "light";
   default: false;
   color-scheme: "light";
-  font-family: "Roboto", sans-serif;
+  font-family: "Roboto Variable", sans-serif;
 
   /* Define colors for the light theme */
   --color-base-100: oklch(98% 0.003 247.858);
@@ -61,7 +61,7 @@
   default: true;
   prefersdark: true;
   color-scheme: "dark";
-  font-family: "Roboto", sans-serif;
+  font-family: "Roboto Variable", sans-serif;
 
   /* Define colors for the dark theme */
   --color-base-100: oklch(20.768% 0.039 265.754);
@@ -98,7 +98,7 @@
 
 @layer base {
   body {
-    font-family: "Roboto", sans-serif;
+    font-family: "Roboto Variable", sans-serif;
     font-size: 0.875rem; /* 14px */
     line-height: 1.5;
     color: theme("colors.base-content");
@@ -114,14 +114,13 @@
   }
 
   h1, h2, h3, h4, h5, h6 {
-    font-family: "Roboto", sans-serif;
+    font-family: "Geist Variable", sans-serif;
     font-weight: 600;
     line-height: 1.2;
     color: theme("colors.base-content");
   }
 
   h1 {
-    font-family: "Oswald", sans-serif;
     font-size: 1.5rem; /* 24px */
   }
 
@@ -236,14 +235,6 @@ html {
     color: var(--color-base-content);
     -webkit-text-fill-color: var(--color-base-content);
   }
-}
-
-.text-oswald {
-  font-family: "Oswald", sans-serif;
-}
-
-.text-roboto {
-  font-family: "Roboto", sans-serif;
 }
 
 .drawer-toggle:checked ~ .drawer-content {

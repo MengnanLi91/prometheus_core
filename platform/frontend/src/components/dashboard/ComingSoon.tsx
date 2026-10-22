@@ -18,7 +18,7 @@
 export function ComingSoon({ label }: { label: string }) {
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center">
-      <p className="m-0 text-lg font-semibold text-base-content">{label}</p>
+      <h2 className="m-0 text-lg font-semibold text-base-content">{label}</h2>
       <p className="m-0 text-sm text-base-content/50">Coming soon</p>
     </div>
   );

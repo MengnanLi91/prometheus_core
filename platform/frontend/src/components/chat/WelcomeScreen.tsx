@@ -68,7 +68,7 @@ export function WelcomeScreen({ onSelect }: { onSelect: (text: string) => void }
           <Atom size={28} className="text-primary" />
         </div>
         <div className="max-w-md space-y-2 text-center">
-          <p className="m-0 text-2xl font-bold text-base-content">{intro}</p>
+          <h2 className="m-0 text-2xl font-bold text-base-content">{intro}</h2>
           {showSuggestions && (
             <p className="m-0 text-sm text-base-content/60">{suggestionTitle}</p>
           )}
