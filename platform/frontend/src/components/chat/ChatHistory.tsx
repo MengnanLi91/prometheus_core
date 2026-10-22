@@ -105,7 +105,7 @@ export function ChatHistory({ onNewChat, onOpenConversation }: Props) {
 
   return (
     <div className="flex flex-col gap-2 pb-3">
-      <p className="m-0 px-1 text-[11px] font-semibold text-base-content/60">Chat History</p>
+      <h2 className="m-0 px-1 text-[11px] font-semibold text-base-content/60">Chat History</h2>
       <button
         onClick={onNewChat}
         className="flex items-center gap-1.5 px-1 text-xs text-base-content/60 transition-colors hover:text-base-content cursor-pointer"

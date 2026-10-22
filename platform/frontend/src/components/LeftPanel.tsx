@@ -88,7 +88,7 @@ export function LeftPanel({
         {!collapsed && (
           <div className="min-w-0">
             <p className="m-0 text-[10px] font-bold tracking-widest text-base-content/50">INL</p>
-            <p className="m-0 text-base font-bold leading-tight text-base-content">Prometheus</p>
+            <h2 className="m-0 text-base font-bold leading-tight text-base-content">Prometheus</h2>
           </div>
         )}
       </div>
