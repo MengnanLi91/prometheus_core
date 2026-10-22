@@ -10,8 +10,8 @@ Keep LLM usage safe for agents and operators by redacting secrets, never taking 
 ## Requirements
 - REQ-007-01: `redact_secrets(...)` MUST recursively redact dict fields whose names contain common secret fragments including `api_key`, `llm_api_key`, `authorization`, `token`, `secret`, and `password`.
 - REQ-007-02: `redact_secrets(...)` MUST redact secret assignment patterns inside strings while preserving non-secret values.
-- REQ-007-03: Retired. LLM clients MUST NOT read API keys from any part of an A2A request; credentials come only from `LLMConfig` and the environment. A request-independent credential provider will be specified separately.
-- REQ-007-04: Retired with REQ-007-03 (`from_a2a_context(...)` is removed).
+- REQ-007-03: Retired. Superseded by REQ-007-15.
+- REQ-007-04: Retired. Superseded by REQ-007-15.
 - REQ-007-05: Proxy requests MUST send `Authorization: Bearer <key>` when a transient config key or per-call `api_key` is provided.
 - REQ-007-06: Debug logging MUST hide prompt and embedding content by default while still logging metadata such as alias, path, counts, roles, provider model, usage, and latency.
 - REQ-007-07: When `debug_log_messages=True`, debug logging MAY include normalized prompt/embedding content only after secret redaction.
@@ -22,6 +22,7 @@ Keep LLM usage safe for agents and operators by redacting secrets, never taking 
 - REQ-007-12: Trace tags `app_name`, `base_url`, and `model` MUST be protected and override caller-supplied tags.
 - REQ-007-13: Tool-call arguments recorded in MLflow span outputs MUST pass through `redact_secrets(...)`, and full tool JSON schemas MUST NOT be recorded as span inputs.
 - REQ-007-14: Debug logging for tool-calling chat MUST include tool names, tool count, tool-call count, and `finish_reason` while withholding model-authored tool-call arguments unless `debug_log_messages` is enabled, in which case they MUST be redacted.
+- REQ-007-15: LLM clients MUST take API keys only from `LLMConfig` and the environment, and MUST NOT read them from any part of an A2A request.
 
 ## Behavior
 - BEH-007-01: GIVEN an A2A request whose data parts contain `llm_api_key` WHEN `PrometheusAgent.llm_client(context)` creates a client THEN the client's config has no API key from the request.

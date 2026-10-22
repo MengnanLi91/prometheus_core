@@ -690,6 +690,7 @@ workflows:
                 ParseDict(payload, AgentCard())
 
     def test_llm_client_helper_inherits_agent_name_and_ignores_request_keys(self):
+        """Covers REQ-007-15 and BEH-007-01."""
         agent = PrometheusAgent(agent_name="Trace Agent")
         context = MagicMock(spec=RequestContext)
         context.message.parts = [
