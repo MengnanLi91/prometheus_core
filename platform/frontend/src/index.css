@@ -237,14 +237,6 @@ html {
   }
 }
 
-.text-geist {
-  font-family: "Geist Variable", sans-serif;
-}
-
-.text-roboto {
-  font-family: "Roboto Variable", sans-serif;
-}
-
 .drawer-toggle:checked ~ .drawer-content {
   margin-left: 256px; /* Adjust based on your sidebar width */
   transition: margin-left 0.3s ease-in-out; /* Add transition */
