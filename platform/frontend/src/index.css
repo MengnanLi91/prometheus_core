@@ -114,14 +114,13 @@
   }
 
   h1, h2, h3, h4, h5, h6 {
-    font-family: "Roboto", sans-serif;
+    font-family: "Geist Variable", sans-serif;
     font-weight: 600;
     line-height: 1.2;
     color: theme("colors.base-content");
   }
 
   h1 {
-    font-family: "Oswald", sans-serif;
     font-size: 1.5rem; /* 24px */
   }
 
@@ -238,8 +237,8 @@ html {
   }
 }
 
-.text-oswald {
-  font-family: "Oswald", sans-serif;
+.text-geist {
+  font-family: "Geist Variable", sans-serif;
 }
 
 .text-roboto {
