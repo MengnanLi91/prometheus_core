@@ -21,7 +21,7 @@
   name: "light";
   default: false;
   color-scheme: "light";
-  font-family: "Roboto", sans-serif;
+  font-family: "Roboto Variable", sans-serif;
 
   /* Define colors for the light theme */
   --color-base-100: oklch(98% 0.003 247.858);
@@ -61,7 +61,7 @@
   default: true;
   prefersdark: true;
   color-scheme: "dark";
-  font-family: "Roboto", sans-serif;
+  font-family: "Roboto Variable", sans-serif;
 
   /* Define colors for the dark theme */
   --color-base-100: oklch(20.768% 0.039 265.754);
@@ -98,7 +98,7 @@
 
 @layer base {
   body {
-    font-family: "Roboto", sans-serif;
+    font-family: "Roboto Variable", sans-serif;
     font-size: 0.875rem; /* 14px */
     line-height: 1.5;
     color: theme("colors.base-content");
@@ -242,7 +242,7 @@ html {
 }
 
 .text-roboto {
-  font-family: "Roboto", sans-serif;
+  font-family: "Roboto Variable", sans-serif;
 }
 
 .drawer-toggle:checked ~ .drawer-content {
