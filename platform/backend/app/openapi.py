@@ -103,8 +103,7 @@ TAGS: list[dict[str, Any]] = [
     {
         "name": "config",
         "description": (
-            "Settings the UI reads at startup: chat profiles, intro text, suggestions and the "
-            "upload size limit."
+            "Settings the UI reads at startup: chat profiles, intro text, suggestions and the upload size limit."
         ),
     },
     {
@@ -114,8 +113,7 @@ TAGS: list[dict[str, Any]] = [
     {
         "name": "chat",
         "description": (
-            "Send a chat turn to the agent orchestrator. Progress for the turn streams over "
-            "`GET /api/events`."
+            "Send a chat turn to the agent orchestrator. Progress for the turn streams over `GET /api/events`."
         ),
     },
     {
@@ -145,8 +143,7 @@ TAGS: list[dict[str, Any]] = [
     {
         "name": "admin-signing-keys",
         "description": (
-            "Create, activate and retire the RS256 keys that sign per-turn identity tokens. "
-            "Requires the `admin` role."
+            "Create, activate and retire the RS256 keys that sign per-turn identity tokens. Requires the `admin` role."
         ),
     },
 ]
