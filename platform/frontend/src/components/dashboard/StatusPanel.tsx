@@ -12,25 +12,12 @@
 
 import { useState } from "react";
 import { Cpu, FolderOpen, PanelRight } from "lucide-react";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { api } from "@/lib/api/client";
 import { useChatState } from "@/lib/store/chat";
 import type { ArtifactMeta } from "@/lib/api/types";
 
 type StatusTab = "jobs" | "artifacts";
-
-function EmptyState({ icon, title, hint }: { icon: React.ReactNode; title: string; hint: string }) {
-  return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 text-center">
-      <div className="flex items-center justify-center rounded-2xl border border-base-300 bg-base-200 p-4 text-base-content/40">
-        {icon}
-      </div>
-      <div className="space-y-1.5">
-        <p className="m-0 font-semibold text-base-content">{title}</p>
-        <p className="m-0 text-xs text-base-content/60">{hint}</p>
-      </div>
-    </div>
-  );
-}
 
 /** Every artifact in the open conversation's transcript, newest last, deduped
  * by id. A resumed conversation gives each assistant turn the artifacts it
