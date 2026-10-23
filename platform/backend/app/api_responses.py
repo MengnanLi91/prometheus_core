@@ -37,10 +37,12 @@ class ErrorResponse(BaseModel):
 
 def error(status_code: int, description: str, *details: str) -> Responses:
     """One documented error status with an example per possible ``detail`` message."""
-    content: dict[str, Any] = {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}
+    content: dict[str, Any] = {}
     if details:
-        content["application/json"]["examples"] = {
-            f"example_{i}": {"summary": detail, "value": {"detail": detail}} for i, detail in enumerate(details, 1)
+        content["application/json"] = {
+            "examples": {
+                f"example_{i}": {"summary": detail, "value": {"detail": detail}} for i, detail in enumerate(details, 1)
+            }
         }
     return {status_code: {"model": ErrorResponse, "description": description, "content": content}}
 
