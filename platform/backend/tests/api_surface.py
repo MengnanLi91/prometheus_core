@@ -133,8 +133,9 @@ def _openapi_surface(app: Any) -> dict[str, Any]:
     return {"paths": paths, "schemas": schemas}
 
 
-def build_surface() -> dict[str, Any]:
-    from app.main import app
+def build_surface(app: Any = None) -> dict[str, Any]:
+    if app is None:
+        from app.main import app
 
     return {"routes": _route_table(app), "openapi": _openapi_surface(app)}
 
