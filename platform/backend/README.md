@@ -45,6 +45,20 @@ itself from its lifespan, and no longer does (see *Multi-worker* below). Skippin
 gives you a backend that starts and then fails on the first admin-plane query.
 `uv run pytest` needs no database — the suite runs against SQLite and `fakeredis`.
 
+### API surface snapshot
+
+`tests/test_api_surface.py` compares the live app's HTTP surface (paths, methods,
+success status codes, parameters, request bodies, success response schemas and
+component schemas) against the golden file `tests/snapshots/api_surface.json`. Adding,
+removing or changing an endpoint fails the test until the snapshot is regenerated.
+Documentation-only edits (summaries, descriptions, examples, tags, error responses)
+leave it untouched. When a surface change is intentional, regenerate the file and commit
+it with the change, so reviewers see exactly what moved:
+
+```bash
+uv run python -m tests.api_surface
+```
+
 ## Configuration
 
 `app/config.py` loads `app/config.yml` (override the path with `PROMETHEUS_CONFIG_PATH`).

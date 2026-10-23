@@ -23,6 +23,9 @@ from __future__ import annotations
 
 import difflib
 
+from fastapi import FastAPI
+
+from app.main import app
 from tests.api_surface import SNAPSHOT_PATH, build_surface, render
 
 
@@ -42,3 +45,17 @@ def test_api_surface_matches_snapshot() -> None:
             "The API surface changed. If intentional, regenerate with "
             "`uv run python -m tests.api_surface` and commit the diff.\n\n" + diff
         )
+
+
+def test_new_endpoint_is_reported() -> None:
+    """Adding a route without regenerating the snapshot must fail the guard above."""
+    probe = FastAPI()
+    probe.router.routes.extend(app.routes)
+
+    @probe.get("/api/__surface_probe")
+    def _probe() -> dict[str, str]:
+        return {}
+
+    actual = render(build_surface(probe))
+    assert actual != SNAPSHOT_PATH.read_text()
+    assert "/api/__surface_probe" in actual
