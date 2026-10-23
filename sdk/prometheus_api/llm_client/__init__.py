@@ -19,6 +19,7 @@ from .exceptions import (
     LLMClientError,
     LLMConfigError,
     LLMEndpointUnavailableError,
+    LLMProviderError,
     LLMToolCallError,
 )
 from .models import ChatResponse, EmbeddingResponse
@@ -48,6 +49,7 @@ __all__ = [
     "LLMClientError",
     "LLMConfigError",
     "LLMEndpointUnavailableError",
+    "LLMProviderError",
     "LLMConfig",
     "LLMToolCallError",
     "ToolCall",
