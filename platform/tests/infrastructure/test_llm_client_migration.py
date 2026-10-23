@@ -81,10 +81,10 @@ def test_llm_agent_compose_files_receive_selectable_profiles(project_root):
         assert len(services) == 1
         environment = next(iter(services.values()))["environment"]
 
-        assert environment["REGISTRY_URL"] == "${REGISTRY_URL:-http://litellm:4000}"
+        assert environment["REGISTRY_URL"] == "${REGISTRY_URL:-http://backend:8000}"
         assert environment["LLM_CONFIG_PROFILE"] == "${LLM_CONFIG_PROFILE:?set LLM_CONFIG_PROFILE in .env}"
         assert environment["LLM_CONFIG_FILE"] == "${LLM_CONFIG_FILE:-}"
-        assert environment["LITELLM_MASTER_KEY"] == "${LITELLM_MASTER_KEY}"
+        assert environment["LITELLM_MASTER_KEY"] == "${AGENT_SECRET}"
         assert "LLM_DEFAULT_MODEL" not in environment
         for key, expected in PROVIDER_KEY_ENV.items():
             assert environment[key] == expected

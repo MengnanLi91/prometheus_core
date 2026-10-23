@@ -225,9 +225,9 @@ test-system: ##@ Test the user experience on an already-running platform (start 
 # The agents come from the generated compose file at run time, so the ng-*
 # targets check the agents they actually started.
 .PHONY: check
-check: ##@ Wait until the running platform answers on its host ports and every agent is registered with LiteLLM
+check: ##@ Wait until the running platform answers on its host ports and every agent is registered with the backend
 	python3 -u scripts/check_platform.py --timeout $(CHECK_TIMEOUT) \
-		--backend-port $(BACKEND_PORT) --litellm-port $(LITELLM_LOCAL_PORT) \
+		--backend-port $(BACKEND_PORT) \
 		$(if $(FRONTEND_PORT),--frontend-port $(FRONTEND_PORT),) \
 		agents/client-agent $$(sed -n 's#^  - \(.*\)/docker-compose.yml$$#\1#p' $(COMPOSE_AGENTS) 2>/dev/null)
 
