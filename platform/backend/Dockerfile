@@ -60,6 +60,10 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends libgl1 libxrender1 libxext6 libsm6 \
     && rm -rf /var/lib/apt/lists/*
 
+# Root of the persistent cache volumes (compose mounts mesh-cache at
+# /cache/prometheus-mesh).
+RUN mkdir /cache
+
 COPY pyproject.toml /app/
 RUN --mount=type=cache,id=prometheus-uv-cache,target=/root/.cache/uv,sharing=locked \
     uv sync --no-dev --no-install-project --inexact --no-sources
