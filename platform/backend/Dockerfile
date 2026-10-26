@@ -60,6 +60,12 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends libgl1 libxrender1 libxext6 libsm6 \
     && rm -rf /var/lib/apt/lists/*
 
+# Root of the persistent cache volumes (compose mounts mesh-cache at
+# /cache/prometheus-mesh), owned by the non-root app UID set below. The mount
+# point itself must exist in the image: a fresh named volume copies its
+# ownership, and one Docker creates on mount would be root-owned.
+RUN mkdir -p /cache/prometheus-mesh && chown -R 10001:10001 /cache
+
 COPY pyproject.toml /app/
 RUN --mount=type=cache,id=prometheus-uv-cache,target=/root/.cache/uv,sharing=locked \
     uv sync --no-dev --no-install-project --inexact --no-sources
@@ -73,6 +79,16 @@ COPY app /app/app
 COPY alembic /app/alembic
 COPY alembic.ini /app/alembic.ini
 COPY docker-entrypoint.sh /app/docker-entrypoint.sh
+
+# Run as a fixed non-root UID so the image works under Pod Security "restricted"
+# and with a read-only root filesystem. Everything above stays root-owned (the
+# app only reads /app and site-packages) except /cache; the only writable paths
+# are /tmp (tempfile: uploads, artifact downloads, mesh sources) and /cache.
+RUN groupadd --system --gid 10001 app \
+    && useradd --system --uid 10001 --gid 10001 --home-dir /home/app --create-home app
+ENV HOME=/home/app \
+    XDG_CACHE_HOME=/home/app/.cache
+USER 10001:10001
 
 EXPOSE 8000
 
