@@ -3,6 +3,10 @@ codecov:
     # One upload per unit that reports coverage; raise it as units are added
     after_n_builds: 9
 
+# Mark uncovered changed lines inline in the PR diff
+github_checks:
+  annotations: true
+
 coverage:
   status:
     # Overall coverage may not drop below the base commit's
