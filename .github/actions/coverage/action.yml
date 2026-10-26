@@ -36,4 +36,4 @@ runs:
         flags: ${{ inputs.flag }}
         files: ${{ inputs.directory }}/coverage.xml
         disable_search: true
-        fail_ci_if_error: ${{ github.event_name == 'push' }}
+        fail_ci_if_error: true
