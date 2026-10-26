@@ -54,6 +54,16 @@ const ICON_SIZE_CLASSES: Record<ButtonSize, string> = {
   lg: "size-5",
 };
 
+/** Padding on the icon side of an icon-and-text button, about 3/4 of DaisyUI's
+ * `--btn-p`. Even padding looks wider next to an icon than next to text, since
+ * the icon is lighter and its SVG has empty space at its edges. */
+const ICON_SIDE_PADDING_CLASSES: Record<ButtonSize, { left: string; right: string }> = {
+  xs: { left: "ps-1.5", right: "pe-1.5" },
+  sm: { left: "ps-2.5", right: "pe-2.5" },
+  md: { left: "ps-3", right: "pe-3" },
+  lg: { left: "ps-4", right: "pe-4" },
+};
+
 const TOOLTIP_PLACEMENT_CLASSES = {
   top: "tooltip-top",
   bottom: "tooltip-bottom",
@@ -164,6 +174,7 @@ export function Button(props: ButtonProps) {
     variant && VARIANT_CLASSES[variant],
     SIZE_CLASSES[size],
     iconOnly && (props.shape === "circle" ? "btn-circle" : "btn-square"),
+    !iconOnly && iconSlot && ICON_SIDE_PADDING_CLASSES[size][props.iconPosition ?? "left"],
     soft && "btn-soft",
     outline && "btn-outline",
     wide && "btn-block",
