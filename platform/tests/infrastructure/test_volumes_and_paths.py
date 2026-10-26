@@ -112,8 +112,8 @@ def test_mesh_cache_volume(compose_data):
     """
     backend = compose_data["services"]["backend"]
     volumes = _get_volumes(backend)
-    assert any("mesh-cache:/var/cache/prometheus-mesh" in v for v in volumes)
-    assert backend["environment"]["PROMETHEUS_MESH_CACHE_DIR"] == "/var/cache/prometheus-mesh"
+    assert any("mesh-cache:/cache/prometheus-mesh" in v for v in volumes)
+    assert backend["environment"]["PROMETHEUS_MESH_CACHE_DIR"] == "/cache/prometheus-mesh"
 
 
 def test_postgres_data_volume(compose_data):
