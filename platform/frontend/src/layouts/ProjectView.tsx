@@ -23,6 +23,7 @@ import { Home } from "../components/dashboard/Home";
 import { ComingSoon } from "../components/dashboard/ComingSoon";
 import { navLabel, type NavId } from "../components/dashboard/nav";
 import { PageAgentRegistry } from "../pages/PageAgentRegistry";
+import { PageDataManagement } from "../pages/PageDataManagement";
 import { PageWorkflows } from "../pages/PageWorkflows";
 
 interface Props {
@@ -80,10 +81,12 @@ export function ProjectView({ onLogout }: Props) {
             {activeNav === "admin" && currentUser?.role === "admin" && <AdminSection />}
             {activeNav === "workflows" && <PageWorkflows />}
             {activeNav === "agent-registry" && <PageAgentRegistry />}
+            {activeNav === "data-management" && <PageDataManagement />}
             {activeNav !== "home" &&
               activeNav !== "admin" &&
               activeNav !== "workflows" &&
-              activeNav !== "agent-registry" && <ComingSoon label={navLabel(activeNav)} />}
+              activeNav !== "agent-registry" &&
+              activeNav !== "data-management" && <ComingSoon label={navLabel(activeNav)} />}
           </main>
         </div>
 
