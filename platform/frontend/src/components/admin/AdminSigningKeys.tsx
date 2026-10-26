@@ -14,6 +14,14 @@ import { useEffect, useState } from "react";
 import { Check, Copy, Plus } from "lucide-react";
 import { api, ApiError } from "@/lib/api/client";
 import type { SigningKey } from "@/lib/api/types";
+import { StatusPill, type StatusPillTone } from "@/components/ui/StatusPill";
+
+/** An inactive key is waiting to be activated, so it warns; a retired key is done. */
+const KEY_STATUS_TONE: Record<"active" | "inactive" | "retired", StatusPillTone> = {
+  active: "success",
+  inactive: "warning",
+  retired: "neutral",
+};
 
 /**
  * Admin > Signing Keys. Generate/activate/retire RS256 keys for the identity
@@ -124,18 +132,16 @@ export function AdminSigningKeys() {
             </thead>
             <tbody>
               {keys.map((key) => {
-                const status = key.retired_at ? "retired" : key.is_active ? "active" : "inactive";
+                const status: keyof typeof KEY_STATUS_TONE = key.retired_at
+                  ? "retired"
+                  : key.is_active
+                    ? "active"
+                    : "inactive";
                 return (
                   <tr key={key.id}>
                     <td className="font-mono text-xs">{key.kid}</td>
                     <td>
-                      <span
-                        className={`badge badge-sm ${
-                          status === "active" ? "badge-success" : status === "retired" ? "badge-ghost" : "badge-warning"
-                        }`}
-                      >
-                        {status}
-                      </span>
+                      <StatusPill label={status} tone={KEY_STATUS_TONE[status]} />
                     </td>
                     <td className="text-base-content/60">{new Date(key.created_at).toLocaleString()}</td>
                     <td className="text-base-content/60">
