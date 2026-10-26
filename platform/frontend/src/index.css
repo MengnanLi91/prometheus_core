@@ -82,8 +82,10 @@
   --color-success-content: oklch(0% 0 0);
   --color-warning: oklch(85.0% 0.300 95.0);
   --color-warning-content: oklch(0% 0 0);
-  --color-error: oklch(40.0% 0.300 25.0);
-  --color-error-content: oklch(100% 0 0);
+  /* Brighter than the light theme's red so red text stays readable on the
+     dark base (5.5:1 vs 2.5:1); dark text on solid red for the same reason. */
+  --color-error: oklch(67.34% 0.215 20.09);
+  --color-error-content: oklch(0% 0 0);
   --radius-selector: 0.5rem;
   --radius-field: 0.5rem;
   --radius-box: 1rem;
