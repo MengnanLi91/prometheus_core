@@ -124,3 +124,34 @@ def test_postgres_data_volume(compose_data):
 def test_valkey_data_volume(compose_data):
     volumes = _get_volumes(compose_data["services"]["redis"])
     assert any("valkey-data:/data" in v for v in volumes)
+
+
+def _final_user(dockerfile: str) -> str | None:
+    """The last USER instruction in a Dockerfile, i.e. the user the image runs as."""
+    users = [
+        line.split(None, 1)[1].strip() for line in dockerfile.splitlines() if line.strip().upper().startswith("USER ")
+    ]
+    return users[-1] if users else None
+
+
+def test_backend_runs_as_non_root(project_root):
+    """The backend image must end on the fixed non-root UID (k8s plan P1-11).
+
+    Pod Security "restricted" rejects root containers, and the chart runs the pod as
+    UID 10001 with a read-only root filesystem.
+    """
+    dockerfile = (project_root / "backend" / "Dockerfile").read_text()
+    user = _final_user(dockerfile)
+    assert user is not None, "backend/Dockerfile should set USER"
+    assert user.split(":")[0] == "10001"
+
+
+def test_backend_mesh_cache_owned_by_app_user(project_root):
+    """The mesh cache mount point is created in the image, owned by the app UID.
+
+    A fresh named volume copies the ownership of the directory it is mounted on, so
+    this is what makes mesh-cache writable by the non-root backend. If the image
+    lacked the mount point, Docker would create it owned by root.
+    """
+    dockerfile = (project_root / "backend" / "Dockerfile").read_text()
+    assert "mkdir -p /cache/prometheus-mesh && chown -R 10001:10001 /cache" in dockerfile
