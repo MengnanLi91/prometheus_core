@@ -5,9 +5,16 @@ codecov:
 
 coverage:
   status:
-    # No coverage floors yet
-    project: off
-    patch: off
+    # Overall coverage may not drop below the base commit's
+    project:
+      default:
+        target: auto
+        threshold: 0%
+    # Every new or changed line must be covered
+    patch:
+      default:
+        target: 100%
+        threshold: 0%
 
 flags:
   sdk:
