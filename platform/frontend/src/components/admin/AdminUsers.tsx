@@ -11,9 +11,11 @@
 // SPDX-License-Identifier: MIT
 
 import { useEffect, useRef, useState } from "react";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { Pencil, Plus, Shield, Trash2, User } from "lucide-react";
 import { api, ApiError } from "@/lib/api/client";
 import type { AdminUser } from "@/lib/api/types";
+import { StatusPill } from "@/components/ui/StatusPill";
+import { Tag } from "@/components/ui/Tag";
 
 /**
  * Admin > Users. First table component in this codebase -- plain DaisyUI
@@ -150,15 +152,14 @@ export function AdminUsers() {
                 <tr key={user.id}>
                   <td>{user.username}</td>
                   <td>
-                    <span className={`badge badge-sm ${user.role === "admin" ? "badge-primary" : "badge-ghost"}`}>
-                      {user.role}
-                    </span>
+                    <Tag label={user.role} icon={user.role === "admin" ? Shield : User} />
                   </td>
                   <td className="text-base-content/60">{user.provider}</td>
                   <td>
-                    <span className={`badge badge-sm ${user.is_active ? "badge-success" : "badge-ghost"}`}>
-                      {user.is_active ? "active" : "inactive"}
-                    </span>
+                    <StatusPill
+                      label={user.is_active ? "active" : "inactive"}
+                      tone={user.is_active ? "success" : "neutral"}
+                    />
                   </td>
                   <td className="text-base-content/60">
                     {user.last_login_at ? new Date(user.last_login_at).toLocaleString() : "never"}

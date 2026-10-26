@@ -14,6 +14,7 @@ import { useEffect, useRef, useState } from "react";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import { api, ApiError } from "@/lib/api/client";
 import type { OidcProvider } from "@/lib/api/types";
+import { StatusPill } from "@/components/ui/StatusPill";
 
 const DEFAULT_SCOPES = "openid profile email";
 
@@ -195,9 +196,10 @@ export function AdminOidcProviders() {
                   <td className="text-base-content/60">{provider.issuer_url}</td>
                   <td>{provider.default_role}</td>
                   <td>
-                    <span className={`badge badge-sm ${provider.is_enabled ? "badge-success" : "badge-ghost"}`}>
-                      {provider.is_enabled ? "enabled" : "disabled"}
-                    </span>
+                    <StatusPill
+                      label={provider.is_enabled ? "enabled" : "disabled"}
+                      tone={provider.is_enabled ? "success" : "neutral"}
+                    />
                   </td>
                   <td className="flex gap-1 justify-end">
                     <button className="btn btn-ghost btn-xs" onClick={() => openEdit(provider)} aria-label="Edit provider">
