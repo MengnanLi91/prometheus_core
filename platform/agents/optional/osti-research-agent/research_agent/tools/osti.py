@@ -187,7 +187,11 @@ def build_osti_tools(ctx: RunContext) -> List[BaseTool]:
 
         if direct_url:
             progress.emit(f"Downloading {source_id} from {direct_url}")
-            dest = f"/tmp/osti_dl_{_safe_source_id(source_id)}.pdf"
+            # Inside the run workdir so concurrent runs never share a file and
+            # the download is removed with the rest of the run.
+            downloads = ctx.run_workdir / "downloads"
+            downloads.mkdir(parents=True, exist_ok=True)
+            dest = str(downloads / f"{_safe_source_id(source_id)}.pdf")
             pdf_path = await asyncio.to_thread(
                 osti_client.download_pdf_from_url,
                 direct_url,

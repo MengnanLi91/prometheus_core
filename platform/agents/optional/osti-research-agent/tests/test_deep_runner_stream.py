@@ -281,3 +281,57 @@ def test_verified_findings_survive_other_verifier_failures(monkeypatch):
     assert final.status == "completed"
     assert len(final.findings) == 1
     assert "Table 1 reports the measured value" in final.answer
+
+
+def _run_recording_workdir(monkeypatch, tmp_path, *, fail=False):
+    async def no_followups(**kwargs):
+        return []
+
+    monkeypatch.setattr(llm_steps, "suggest_followup_queries", no_followups)
+    seen = []
+
+    class _Graph:
+        def __init__(self, ctx):
+            self._ctx = ctx
+
+        async def astream(self, _input, *, stream_mode=None, config=None):
+            paper = self._ctx.run_workdir / "papers" / "1" / "paper.md"
+            paper.parent.mkdir(parents=True)
+            paper.write_text("text")
+            seen.append(self._ctx.run_workdir)
+            if fail:
+                raise RuntimeError("boom")
+            yield ("updates", {"model": {"messages": [AIMessage(content="{}")]}})
+
+    monkeypatch.setattr(
+        deep_runner, "build_research_agent", lambda config, ctx: _Graph(ctx)
+    )
+    config = _config().model_copy(update={"workdir": tmp_path})
+
+    async def go():
+        async for _ in deep_runner.run_deep(
+            "q", config, "conv-1", complete=_fake_complete
+        ):
+            pass
+
+    return go, seen
+
+
+def test_run_workdir_is_unique_per_turn_and_removed(monkeypatch, tmp_path):
+    go, seen = _run_recording_workdir(monkeypatch, tmp_path)
+    asyncio.run(go())
+    asyncio.run(go())
+
+    assert len(seen) == 2 and seen[0] != seen[1]
+    assert all(p.parent == tmp_path and p.name.startswith("conv-1-") for p in seen)
+    assert not any(p.exists() for p in seen)
+
+
+def test_run_workdir_removed_when_run_fails(monkeypatch, tmp_path):
+    go, seen = _run_recording_workdir(monkeypatch, tmp_path, fail=True)
+    try:
+        asyncio.run(go())
+    except RuntimeError:
+        pass
+
+    assert seen and not seen[0].exists()

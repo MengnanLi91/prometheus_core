@@ -27,6 +27,8 @@ so the A2A executor and CLI are unchanged.
 from __future__ import annotations
 
 import logging
+import shutil
+import uuid
 from typing import AsyncIterator, Dict, Iterator, List, Optional
 
 from langchain_core.messages import AIMessage, ToolMessage
@@ -293,57 +295,63 @@ async def run_deep(
     caller enforcing an outer budget can salvage partial results on timeout."""
     import time
 
-    run_workdir = config.workdir / run_id
-    ctx = RunContext(
-        config=config,
-        complete=complete,
-        question=question,
-        redis_client=redis_client,
-        caches=caches,
-        pdf_cache=pdf_cache,
-        run_workdir=run_workdir,
-        deadline=(
-            deadline
-            if deadline is not None
-            else time.monotonic() + config.total_budget_s
-        ),
-    )
-    # Embedding-backed fact/answer store over the same LiteLLM proxy and Redis
-    # client. Degrades to empty results when redis_client is None.
-    from research_agent.core.llm import LiteLLMEmbedder
-    from research_agent.knowledge import RedisKnowledgeStore
+    # One directory per turn: run_id is the conversation id, so two turns of
+    # the same conversation must not share (or delete) each other's papers.
+    run_workdir = config.workdir / f"{run_id}-{uuid.uuid4().hex[:8]}"
+    try:
+        ctx = RunContext(
+            config=config,
+            complete=complete,
+            question=question,
+            redis_client=redis_client,
+            caches=caches,
+            pdf_cache=pdf_cache,
+            run_workdir=run_workdir,
+            deadline=(
+                deadline
+                if deadline is not None
+                else time.monotonic() + config.total_budget_s
+            ),
+        )
+        # Embedding-backed fact/answer store over the same LiteLLM proxy and Redis
+        # client. Degrades to empty results when redis_client is None.
+        from research_agent.core.llm import LiteLLMEmbedder
+        from research_agent.knowledge import RedisKnowledgeStore
 
-    embedding_route = config.model_route("embedding")
-    embedder = LiteLLMEmbedder(
-        embedding_route.base_url,
-        embedding_route.api_key,
-        embedding_route.model,
-    )
-    ctx.knowledge = RedisKnowledgeStore(redis_client, embedder.embed)
-    if findings is not None:
-        ctx.findings = findings  # share the list so the runner can salvage it
+        embedding_route = config.model_route("embedding")
+        embedder = LiteLLMEmbedder(
+            embedding_route.base_url,
+            embedding_route.api_key,
+            embedding_route.model,
+        )
+        ctx.knowledge = RedisKnowledgeStore(redis_client, embedder.embed)
+        if findings is not None:
+            ctx.findings = findings  # share the list so the runner can salvage it
 
-    agent = build_research_agent(config, ctx)
+        agent = build_research_agent(config, ctx)
 
-    final_text = ""
-    async for mode, chunk in agent.astream(
-        {"messages": [{"role": "user", "content": question}]},
-        stream_mode=["updates", "custom"],
-        config={
-            "recursion_limit": RECURSION_LIMIT,
-            "configurable": {"thread_id": run_id},
-        },
-    ):
-        if mode == "custom":
-            if isinstance(chunk, dict) and chunk.get("message"):
-                yield ProgressEvent(
-                    message=chunk["message"], detail=chunk.get("detail")
-                )
-        elif mode == "updates":
-            text = _last_ai_text(chunk)
-            if text:
-                final_text = text
-            for event in translate_update(chunk, ctx):
-                yield event
+        final_text = ""
+        async for mode, chunk in agent.astream(
+            {"messages": [{"role": "user", "content": question}]},
+            stream_mode=["updates", "custom"],
+            config={
+                "recursion_limit": RECURSION_LIMIT,
+                "configurable": {"thread_id": run_id},
+            },
+        ):
+            if mode == "custom":
+                if isinstance(chunk, dict) and chunk.get("message"):
+                    yield ProgressEvent(
+                        message=chunk["message"], detail=chunk.get("detail")
+                    )
+            elif mode == "updates":
+                text = _last_ai_text(chunk)
+                if text:
+                    final_text = text
+                for event in translate_update(chunk, ctx):
+                    yield event
 
-    yield await build_final_result(question, final_text, ctx)
+        yield await build_final_result(question, final_text, ctx)
+    finally:
+        # Parsed papers are per-run scratch; durable state lives in Redis.
+        shutil.rmtree(run_workdir, ignore_errors=True)

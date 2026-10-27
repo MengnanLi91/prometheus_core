@@ -219,6 +219,29 @@ def test_download_paper_rejects_unreturned_direct_url(monkeypatch):
     assert called is False
 
 
+def test_download_paper_writes_direct_url_into_run_workdir(monkeypatch, tmp_path):
+    dests = []
+
+    def fake_download(url, dest, *, max_bytes):
+        dests.append(dest)
+        return dest
+
+    monkeypatch.setattr(osti_client, "download_pdf_from_url", fake_download)
+    ctx = _ctx()
+    ctx.run_workdir = tmp_path
+    ctx.search_hits["10.1/x"] = {
+        "origin": "openalex",
+        "oa_pdf_url": "https://papers.example/x.pdf",
+    }
+    download = _tool(build_osti_tools(ctx), "download_paper")
+
+    out = json.loads(asyncio.run(download.ainvoke({"source_id": "10.1/x"})))
+
+    assert out["ok"] is True
+    assert dests == [out["pdf_path"]]
+    assert out["pdf_path"].startswith(str(tmp_path / "downloads"))
+
+
 # --- parse_paper ----------------------------------------------------------
 
 
