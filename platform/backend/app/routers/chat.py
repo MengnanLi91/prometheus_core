@@ -35,6 +35,7 @@ from app import identity
 from app.a2a_client import A2AClient
 from app.config import settings
 from app.contract import ChatMessageRequest, ChatMessageResponse, ChatStatus, StatusEvent
+from app.openapi import TAG_CHAT
 from app.redis_client import get_redis
 from app.security import TokenClaims, current_claims
 from app.services import chat as chat_service
@@ -43,7 +44,7 @@ from app.sessions import get_store
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/chat", tags=["chat"])
+router = APIRouter(prefix="/api/chat", tags=[TAG_CHAT])
 
 # Cap on the accumulated in-flight status history carried on each StatusEvent (E-1).
 _STATUS_HISTORY_LIMIT = 50

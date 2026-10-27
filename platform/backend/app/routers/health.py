@@ -27,11 +27,12 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 from app.db import get_session_factory
+from app.openapi import TAG_HEALTH
 from app.redis_client import get_redis
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(tags=["health"])
+router = APIRouter(tags=[TAG_HEALTH])
 
 # Short enough that a hung dependency fails the probe well inside the kubelet's own
 # probe timeout, rather than stacking up requests behind it.

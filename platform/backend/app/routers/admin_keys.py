@@ -38,10 +38,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db_session
 from app.db.models import SigningKey
+from app.openapi import TAG_ADMIN_SIGNING_KEYS
 from app.security import require_admin
 from app.signing_keys import invalidate_active_key_cache, new_signing_key_row
 
-router = APIRouter(prefix="/api/admin/signing-keys", tags=["admin"], dependencies=[Depends(require_admin)])
+router = APIRouter(
+    prefix="/api/admin/signing-keys", tags=[TAG_ADMIN_SIGNING_KEYS], dependencies=[Depends(require_admin)]
+)
 
 
 class SigningKeyOut(BaseModel):

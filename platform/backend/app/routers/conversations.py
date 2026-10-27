@@ -56,6 +56,7 @@ from app.contract import (
     TaskNodeOut,
 )
 from app.conversation_state import ConversationStateClient
+from app.openapi import TAG_CONVERSATIONS
 from app.redis_client import get_redis
 from app.security import TokenClaims, current_claims
 from app.services.artifacts import is_user_upload, shape_artifacts
@@ -65,7 +66,7 @@ from app.task_events import build_task_tree
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api", tags=["conversations"])
+router = APIRouter(prefix="/api", tags=[TAG_CONVERSATIONS])
 
 
 # One client reused across requests (AU-7): ConversationStateClient caches its Redis

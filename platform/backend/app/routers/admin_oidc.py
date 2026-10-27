@@ -40,9 +40,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.crypto import encrypt
 from app.db import get_db_session
 from app.db.models import OidcProvider
+from app.openapi import TAG_ADMIN_OIDC_PROVIDERS
 from app.security import GenericOidcProvider, register_provider, require_admin, unregister_provider
 
-router = APIRouter(prefix="/api/admin/oidc-providers", tags=["admin"], dependencies=[Depends(require_admin)])
+router = APIRouter(
+    prefix="/api/admin/oidc-providers", tags=[TAG_ADMIN_OIDC_PROVIDERS], dependencies=[Depends(require_admin)]
+)
 
 _ROLES = {"admin", "user"}
 # provider_id is a URL path segment (GET /api/auth/login/{provider_id}) and a

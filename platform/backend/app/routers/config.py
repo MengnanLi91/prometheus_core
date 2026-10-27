@@ -23,9 +23,10 @@ from fastapi import APIRouter, Depends
 
 from app.config import settings
 from app.contract import ChatProfile, ConfigResponse
+from app.openapi import TAG_CONFIG
 from app.security import TokenClaims, current_claims
 
-router = APIRouter(prefix="/api", tags=["config"])
+router = APIRouter(prefix="/api", tags=[TAG_CONFIG])
 
 # The profile identifier that carries starter suggestions (parallels the
 # ``chat_profile == "Beginner Chat"`` branch in ``frontend/main.py`` on_chat_start).
