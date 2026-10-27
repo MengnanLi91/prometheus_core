@@ -14,8 +14,8 @@
 
 Documentation only -- nothing here affects routing or request handling. Served at
 the FastAPI defaults: ``/docs`` (Swagger UI), ``/redoc`` and ``/openapi.json``.
-Every tag a router uses must be listed in :data:`TAGS` so it gets a description
-and a stable position in the docs.
+Routers take their tag names from the ``TAG_*`` constants here, and every tag must
+be listed in :data:`TAGS` so it gets a description and a stable position in the docs.
 """
 
 from __future__ import annotations
@@ -77,73 +77,97 @@ Every payload is defined by the Pydantic models in `app/contract.py` and explain
 with examples, in `CONTRACT.md` alongside this service.
 """
 
+# Tag names, shared by the routers and :data:`TAGS` so the two cannot drift.
+TAG_HEALTH = "health"
+TAG_IDENTITY = "identity"
+TAG_SETUP = "setup"
+TAG_AUTH = "auth"
+TAG_CONFIG = "config"
+TAG_SESSIONS = "sessions"
+TAG_CHAT = "chat"
+TAG_EVENTS = "events"
+TAG_UPLOADS = "uploads"
+TAG_ARTIFACTS = "artifacts"
+TAG_CONVERSATIONS = "conversations"
+TAG_ADMIN_USERS = "admin-users"
+TAG_ADMIN_OIDC_PROVIDERS = "admin-oidc-providers"
+TAG_ADMIN_SIGNING_KEYS = "admin-signing-keys"
+TAG_AGENT_REGISTRY = "agent-registry"
+
 TAGS: list[dict[str, Any]] = [
-    {"name": "health", "description": "Liveness probe for load balancers and orchestrators."},
+    {"name": TAG_HEALTH, "description": "Liveness probe for load balancers and orchestrators."},
     {
-        "name": "identity",
+        "name": TAG_IDENTITY,
         "description": (
             "Public signing keys (JWKS) that agents use to verify the short-lived identity "
             "tokens the backend mints for each chat turn."
         ),
     },
     {
-        "name": "setup",
+        "name": TAG_SETUP,
         "description": (
             "First-run bootstrap: check whether the platform has an admin yet and create the "
             "first one. Unauthenticated, and closed for good once any user exists."
         ),
     },
     {
-        "name": "auth",
+        "name": TAG_AUTH,
         "description": (
             "Log in with a username and password or an OIDC provider, log out, and identify "
             "the current user. Login sets the session cookie."
         ),
     },
     {
-        "name": "config",
+        "name": TAG_CONFIG,
         "description": (
             "Settings the UI reads at startup: chat profiles, intro text, suggestions and the upload size limit."
         ),
     },
     {
-        "name": "sessions",
+        "name": TAG_SESSIONS,
         "description": "Start a new conversation and bind it to the browser session.",
     },
     {
-        "name": "chat",
+        "name": TAG_CHAT,
         "description": (
             "Send a chat turn to the agent orchestrator. Progress for the turn streams over `GET /api/events`."
         ),
     },
     {
-        "name": "events",
+        "name": TAG_EVENTS,
         "description": (
             "The per-session Server-Sent Events stream: turn status updates and "
             "background-task progress and completion."
         ),
     },
-    {"name": "uploads", "description": "Stage files to attach to the next chat turn."},
+    {"name": TAG_UPLOADS, "description": "Stage files to attach to the next chat turn."},
     {
-        "name": "artifacts",
+        "name": TAG_ARTIFACTS,
         "description": "Download artifact content produced by agents, and converted mesh files for the 3D viewer.",
     },
     {
-        "name": "conversations",
+        "name": TAG_CONVERSATIONS,
         "description": "Conversation history: list recent conversations, reopen, resume, rename and delete them.",
     },
     {
-        "name": "admin-users",
+        "name": TAG_ADMIN_USERS,
         "description": "Manage local user accounts and roles. Requires the `admin` role.",
     },
     {
-        "name": "admin-oidc-providers",
+        "name": TAG_ADMIN_OIDC_PROVIDERS,
         "description": "Configure the OIDC identity providers offered at login. Requires the `admin` role.",
     },
     {
-        "name": "admin-signing-keys",
+        "name": TAG_ADMIN_SIGNING_KEYS,
         "description": (
             "Create, activate and retire the RS256 keys that sign per-turn identity tokens. Requires the `admin` role."
+        ),
+    },
+    {
+        "name": TAG_AGENT_REGISTRY,
+        "description": (
+            "Agent self-registration and the A2A gateway the orchestrator calls agents through. "
+            "Authenticated with the shared agent secret, not the session cookie."
         ),
     },
 ]

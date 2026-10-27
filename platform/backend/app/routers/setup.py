@@ -29,11 +29,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db_session
 from app.db.models import User as UserRow
+from app.openapi import TAG_SETUP
 from app.passwords import hash_password
 from app.security import User, issue_token, set_session_cookie, verify_token
 from app.sessions import get_store
 
-router = APIRouter(prefix="/api/setup", tags=["setup"])
+router = APIRouter(prefix="/api/setup", tags=[TAG_SETUP])
 
 # Arbitrary constant advisory-lock key, scoped to this one use (bootstrap must
 # happen at most once). Any fixed int works; it just has to not collide with a

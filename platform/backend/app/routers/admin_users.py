@@ -37,10 +37,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db_session
 from app.db.models import User as UserRow
+from app.openapi import TAG_ADMIN_USERS
 from app.passwords import hash_password
 from app.security import require_admin
 
-router = APIRouter(prefix="/api/admin/users", tags=["admin-users"], dependencies=[Depends(require_admin)])
+router = APIRouter(prefix="/api/admin/users", tags=[TAG_ADMIN_USERS], dependencies=[Depends(require_admin)])
 
 _ROLES = {"admin", "user"}
 

@@ -27,11 +27,12 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Request, status
 
 from app.config import settings
 from app.contract import CreateSessionRequest, SessionResponse
+from app.openapi import TAG_SESSIONS
 from app.routers.config import BEGINNER_PROFILE, CHAT_PROFILES
 from app.security import TokenClaims, current_claims
 from app.sessions import get_store
 
-router = APIRouter(prefix="/api", tags=["sessions"])
+router = APIRouter(prefix="/api", tags=[TAG_SESSIONS])
 
 # Selectable profile names (AU-8): a client-supplied profile is validated against these.
 _VALID_PROFILES = {p.name for p in CHAT_PROFILES}

@@ -35,13 +35,14 @@ from app import identity
 from app.a2a_client import A2AClient
 from app.config import settings
 from app.contract import UploadDescriptor
+from app.openapi import TAG_UPLOADS
 from app.security import TokenClaims, current_claims
 from app.services import uploads as upload_service
 from app.sessions import get_store
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api", tags=["uploads"])
+router = APIRouter(prefix="/api", tags=[TAG_UPLOADS])
 
 _CHUNK_SIZE = 1024 * 1024
 

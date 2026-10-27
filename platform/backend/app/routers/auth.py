@@ -33,6 +33,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.db import get_db_session
 from app.db.models import OidcProvider
+from app.openapi import TAG_AUTH
 from app.security import (
     OIDC_FLOW_COOKIE,
     User,
@@ -48,7 +49,7 @@ from app.sessions import get_store
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/auth", tags=["auth"])
+router = APIRouter(prefix="/api/auth", tags=[TAG_AUTH])
 
 
 class LoginResult(BaseModel):
