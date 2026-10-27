@@ -12,8 +12,49 @@
 
 import { usePageHeader } from "@/lib/store/pageHeader";
 import { SectionLabel } from "../ui/SectionLabel";
-import { WorkflowTemplateCard } from "./WorkflowTemplateCard";
-import { SELECTED_TEMPLATE_ID, WORKFLOW_TEMPLATES } from "./mockData";
+import { WorkflowTemplateCard, type WorkflowTemplate } from "./WorkflowTemplateCard";
+
+// Placeholder templates from Figma D.1. Comprehensive Material Analysis is the
+// example workflow, so it's shown as selected.
+const TEMPLATES: WorkflowTemplate[] = [
+  {
+    id: "comprehensive-material-analysis",
+    name: "Comprehensive Material Analysis",
+    complexity: "complex",
+    checkpoints: 3,
+    agents: 5,
+    runtime: "1h 30m",
+    speedup: "4.2x",
+  },
+  {
+    id: "shielding-design-optimization",
+    name: "Shielding Design Optimization",
+    complexity: "complex",
+    checkpoints: 2,
+    agents: 4,
+    runtime: "2h 45m",
+    speedup: "6.1x",
+  },
+  {
+    id: "component-stress-qualification",
+    name: "Component Stress Qualification",
+    complexity: "moderate",
+    checkpoints: 4,
+    agents: 3,
+    runtime: "40m",
+    speedup: "3.8x",
+  },
+  {
+    id: "fuel-assembly-qa-pipeline",
+    name: "Fuel Assembly QA Pipeline",
+    complexity: "simple",
+    checkpoints: 2,
+    agents: 3,
+    runtime: "10m",
+    speedup: "5.5x",
+  },
+];
+const SELECTED_TEMPLATE_ID = "comprehensive-material-analysis";
 
 /**
  * Workflows landing page (Figma D.1): the template picker, then the execution
@@ -28,7 +69,7 @@ export function WorkflowConsole() {
       <section className="flex flex-col gap-3">
         <SectionLabel>Workflow Templates</SectionLabel>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {WORKFLOW_TEMPLATES.map((template) => (
+          {TEMPLATES.map((template) => (
             <WorkflowTemplateCard
               key={template.id}
               template={template}
