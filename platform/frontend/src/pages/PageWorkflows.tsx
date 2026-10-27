@@ -41,7 +41,7 @@ const EXAMPLE_NODES: WorkflowGraphNode[] = [
     position: { x: 502, y: 190 },
     data: { name: "Thermal", status: "queued", input: "material_data", output: "therm_result", est: "50s", width: 176 },
   },
-  { id: "sme-review", type: "checkpoint", position: { x: 362, y: 356 }, data: { name: "SME Review" } },
+  { id: "sme-review", type: "checkpoint", position: { x: 365, y: 359 }, data: { name: "SME Review" } },
   {
     id: "synthesize",
     type: "agent",

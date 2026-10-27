@@ -81,13 +81,18 @@ export function WorkflowAgentNode({ data }: NodeProps<AgentNode>) {
   );
 }
 
-/** A review checkpoint (Figma D.1): a diamond, with its name to the right. */
+/**
+ * A review checkpoint (Figma D.1): a diamond, with its name to the right.
+ * The box is sized so the diamond's rounded tips touch its top and bottom
+ * edges, where the wires attach: a 32px square turned 45° with 4px corners
+ * reaches 21px from its centre.
+ */
 export function WorkflowCheckpointNode({ data }: NodeProps<CheckpointNode>) {
   return (
-    <div className="relative flex size-12 items-center justify-center">
+    <div className="relative flex size-[42px] items-center justify-center">
       <Handle type="target" position={Position.Top} isConnectable={false} className={HANDLE_CLASS} />
-      <span aria-hidden="true" className="size-8 rotate-45 rounded border-[1.5px] border-primary bg-primary/20" />
-      <div className="absolute left-full top-1 ml-1 flex flex-col whitespace-nowrap font-mono uppercase">
+      <span aria-hidden="true" className="size-8 shrink-0 rotate-45 rounded border-[1.5px] border-primary bg-primary/20" />
+      <div className="absolute left-full top-1/2 ml-2 flex -translate-y-1/2 flex-col whitespace-nowrap font-mono uppercase">
         <span className="text-[9px] font-medium leading-3 tracking-[0.03em] text-base-content">{data.name}</span>
         <span className="text-[7.5px] leading-3 tracking-[0.04em] text-base-content/50">Checkpoint</span>
       </div>
