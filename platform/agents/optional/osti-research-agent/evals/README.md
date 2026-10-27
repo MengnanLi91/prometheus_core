@@ -13,6 +13,8 @@ compared against the `pipeline` baseline.
 | `run.py` | runs each question through each engine, writes transcripts, scores |
 | `scoring.py` | pure, offline metrics (unit-tested in `tests/test_eval_scoring.py`) |
 | `report.py` | terminal summary and Markdown report (unit-tested in `tests/test_eval_report.py`) |
+| `judge.py`, `judge_prompt.md` | LLM judge: groundedness, completeness, reference agreement (`tests/test_eval_judge.py`) |
+| `progress.py` | the progress bar |
 | `__main__.py` | the `python -m evals {run,report}` CLI |
 
 ## Running
@@ -28,8 +30,16 @@ make osti-eval OSTI_EVAL_ARGS="--engines pipeline deepagent --redis-db-base 14"
 make osti-eval-report                 # re-print the latest report
 ```
 
+While it runs, a progress bar on the terminal shows questions done, percent,
+the current engine and question, elapsed time, an ETA (from the average time
+of the questions so far), time on the current question, and the agent's live
+status ("Parsing paper..."). Each finished question prints one line above it:
+pass/FAIL, status, time, judge scores, and the failure reasons. Off a terminal
+(CI, `| tee`), it prints plain lines instead.
+
 `make osti-eval` prints a summary when it finishes (per-engine pass counts,
-medians, p90 time, and each failing question with the reason) and copies the
+medians including the judge scores, p90 time, and each failing question with
+the reason) and copies the
 results to `evals/results/osti-eval-<timestamp>/` on the host:
 `report.md` (summary, failures, every question, links to transcripts),
 `report.json`, and `out/{engine}/{qid}/` with each `result.json` and
@@ -46,6 +56,7 @@ stops early still leaves a partial report (`"complete": false`).
 | `--category <name>` | only this category (`core`, `uq`, `adversarial`, ...); repeatable |
 | `--redis-db-base N` | required for more than one engine: engine 1 uses Redis database N, engine 2 uses N+1; refuses non-empty databases and never clears Redis |
 | `--no-redis` | run without Redis (the `cache` questions cannot hit the cache) |
+| `--no-judge` | skip the LLM judge (no judge scores, one fewer model call per question) |
 | `--questions <path>` | another question file |
 
 Each question can take up to `TOTAL_BUDGET_S` (900 s by default) and they run
@@ -60,7 +71,7 @@ instrumented.
 
 ## Scoring
 
-Three layers — only the first is automatic:
+Three layers — the first two run automatically:
 
 1. **Offline metrics (`scoring.py`, automatic).** Per question:
    - `status_match` — status equals `expect_status` (when the spec pins one).
@@ -80,11 +91,27 @@ Three layers — only the first is automatic:
    them per run from LiteLLM's spend logs (or the LangSmith trace) and compare
    against the cost bar below by hand.
 
-2. **LLM-judged rubric (manual, separate).** Feed each `result.json` to a judge
-   model for groundedness and completeness on a 1–5 scale. Kept out of `run.py`
-   so the harness stays deterministic and needs no judge creds.
+2. **LLM judge (`judge.py`, automatic; `--no-judge` to skip).** After each
+   question, a model on the **verifier** route reads the question, the answer,
+   the verified findings and the question's reviewer notes
+   (`judge_prompt.md`), and scores 1–5:
+   - `judge_groundedness` — every claim is supported by the findings.
+   - `judge_completeness` — the question is fully addressed, or the answer
+     says plainly what the sources don't report.
+   - `judge_reference_agreement` — agreement with the reviewer notes: the
+     "Ref:" literature-review values of the UQ block, or the expected behavior
+     of the adversarial questions. Scored only when the notes say what a
+     right answer is (35 of the 51 questions); notes that only describe a
+     question's purpose ("exercises the arXiv path") are not graded. The
+     `Access:` tag is never sent.
 
-3. **Manual spot-check (manual, separate).** Read 5 transcripts end-to-end —
+   A question needs 4 or more on every score it got to pass. The judge's
+   one-line rationale is in `report.md` under "Judge notes". If the judge
+   fails or replies badly, the question is marked `judge_error` and left
+   unjudged; the run continues. One extra model call per question.
+
+3. **Manual spot-check (manual, separate).** A model judge can be wrong, so
+   still read 5 transcripts end-to-end —
    include the adversarial ones (`unobtainium-42` should be `no_results`; "Is it
    safe?" should ask to disambiguate, not fabricate) — and confirm the answer
    matches the cited sources.

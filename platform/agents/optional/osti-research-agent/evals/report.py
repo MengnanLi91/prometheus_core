@@ -20,9 +20,17 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-# A question is a failure when any of these is false or under 1.0.
-_BOOLEAN_CHECKS = ("status_match", "provenance_ok")
+# A question is a failure when any of these is false or under 1.0, or when a
+# judge score is under JUDGE_PASS_SCORE. Kept equal to evals.judge.PASS_SCORE;
+# not imported so this module stays standard-library only (osti-eval-report
+# runs it with a bare python3).
 _RATE_CHECKS = ("citation_link_rate", "source_hit_rate", "fact_match")
+JUDGE_PASS_SCORE = 4
+_JUDGE_SCORES = (
+    ("judge_groundedness", "groundedness"),
+    ("judge_completeness", "completeness"),
+    ("judge_reference_agreement", "reference agreement"),
+)
 
 
 def failures(record: Dict[str, Any]) -> List[str]:
@@ -36,7 +44,19 @@ def failures(record: Dict[str, Any]) -> List[str]:
         value = record.get(key)
         if isinstance(value, (int, float)) and value < 1.0:
             reasons.append(f"{key} {value:.2f}")
+    for key, label in _JUDGE_SCORES:
+        value = record.get(key)
+        if isinstance(value, int) and value < JUDGE_PASS_SCORE:
+            reasons.append(f"judge {label} {value}/5")
     return reasons
+
+
+def _median(values: List[Any]) -> Optional[float]:
+    clean = sorted(v for v in values if isinstance(v, (int, float)) and not isinstance(v, bool))
+    if not clean:
+        return None
+    middle = len(clean) // 2
+    return float(clean[middle]) if len(clean) % 2 else (clean[middle - 1] + clean[middle]) / 2
 
 
 def _fmt(value: Any, suffix: str = "") -> str:
@@ -69,6 +89,7 @@ def _summary_rows(report: Dict[str, Any]) -> List[List[str]]:
                 _fmt(agg.get("median_citation_link_rate")),
                 _fmt(agg.get("median_source_hit_rate")),
                 _fmt(agg.get("median_fact_match")),
+                *[_fmt(_median([r.get(key) for r in records])) for key, _ in _JUDGE_SCORES],
                 _duration(agg.get("median_wall_s")),
                 _duration(agg.get("p90_wall_s")),
             ]
@@ -84,6 +105,9 @@ _SUMMARY_HEADER = [
     "cite links",
     "source hit",
     "fact match",
+    "ground",
+    "complete",
+    "ref agree",
     "median time",
     "p90 time",
 ]
@@ -120,15 +144,18 @@ def terminal_summary(report: Dict[str, Any], *, max_failures: int = 20) -> str:
         if len(failed) > max_failures:
             lines.append(f"  ... and {len(failed) - max_failures} more (see report.md)")
     else:
-        lines.extend(["", "Every question passed the automatic checks."])
-    lines.extend(
-        [
-            "",
-            "Automatic checks only: also judge groundedness/completeness and read "
-            "5 transcripts by hand (evals/README.md).",
-        ]
-    )
+        lines.extend(["", "Every question passed."])
+    judge_errors = [r for r in report.get("records", []) if r.get("judge_error")]
+    if judge_errors:
+        lines.extend(["", f"Judge errors ({len(judge_errors)}): those questions are unjudged."])
+    lines.extend(["", _CAVEAT])
     return "\n".join(lines)
+
+
+_CAVEAT = (
+    "Judge scores are 1-5 from a model on the verifier route (pass is "
+    f"{JUDGE_PASS_SCORE}+); still read 5 transcripts by hand (evals/README.md)."
+)
 
 
 def _md_cell(value: Any) -> str:
@@ -197,6 +224,9 @@ def markdown_report(
                 "cite links",
                 "source hit",
                 "fact match",
+                "ground",
+                "complete",
+                "ref agree",
                 "papers",
                 "time",
                 "text",
@@ -210,6 +240,7 @@ def markdown_report(
                     _fmt(r.get("citation_link_rate")),
                     _fmt(r.get("source_hit_rate")),
                     _fmt(r.get("fact_match")),
+                    *[_fmt(r.get(key)) for key, _ in _JUDGE_SCORES],
                     r.get("papers_analyzed", 0),
                     _duration(r.get("wall_s")),
                     questions.get(str(r.get("id")), ""),
@@ -218,14 +249,36 @@ def markdown_report(
             ],
         )
     )
+    judged = [
+        r
+        for r in report.get("records", [])
+        if r.get("judge_rationale") or r.get("judge_error")
+    ]
+    if judged:
+        sections.extend(["", "## Judge notes", ""])
+        sections.append(
+            _md_table(
+                ["engine", "question", "judge says"],
+                [
+                    [
+                        r.get("engine"),
+                        qid_cell(r),
+                        r.get("judge_rationale") or f"judge error: {r.get('judge_error')}",
+                    ]
+                    for r in judged
+                ],
+            )
+        )
     sections.extend(
         [
             "",
             "## Not covered here",
             "",
-            "These are automatic checks only. Groundedness and completeness need "
-            "an LLM judge, and 5 transcripts should be read by hand; cost comes "
-            "from LiteLLM's spend logs. See `evals/README.md`.",
+            "Judge scores (ground = groundedness, complete = completeness, ref agree = "
+            "agreement with the question's reviewer notes) are 1-5 from a model on "
+            f"the verifier route; a question needs {JUDGE_PASS_SCORE}+ on each to "
+            "pass. A model can misjudge, so still read 5 transcripts by hand; cost "
+            "comes from LiteLLM's spend logs. See `evals/README.md`.",
         ]
     )
     return "\n".join(sections) + "\n"

@@ -53,7 +53,7 @@ def fake_engine(monkeypatch):
     )
     seen = []
 
-    async def run_engine(engine, specs, base, workdir, redis_db, on_record=None):
+    async def run_engine(engine, specs, base, workdir, redis_db, on_record=None, **kwargs):
         records = []
         for spec in specs:
             seen.append(spec["id"])
@@ -73,7 +73,7 @@ def _main(tmp_path, *extra):
     questions.write_text(QUESTIONS)
     args = ["--questions", str(questions), "--engines", "deepagent",
             "--report", str(tmp_path / "r" / "report.json"),
-            "--workdir", str(tmp_path / "r" / "out"), *extra]
+            "--workdir", str(tmp_path / "r" / "out"), "--no-judge", *extra]
     return asyncio.run(eval_run._main(args))
 
 
@@ -121,7 +121,7 @@ def test_report_is_rewritten_after_every_question(tmp_path, monkeypatch):
     )
     report_path = tmp_path / "r" / "report.json"
 
-    async def dies_after_one(engine, specs, base, workdir, redis_db, on_record=None):
+    async def dies_after_one(engine, specs, base, workdir, redis_db, on_record=None, **kwargs):
         spec = specs[0]
         on_record(scoring.score_result({**RESULTS[spec["id"]], "_engine": engine}, spec))
         raise RuntimeError("container restarted")

@@ -35,6 +35,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import logging
 import os
 import sys
 import time
@@ -45,8 +46,10 @@ from typing import Any, Callable, Dict, List, Optional
 import redis
 import yaml
 
+from evals import judge
 from evals import report as render
 from evals import scoring
+from evals.progress import Progress, ProgressLogHandler
 from research_agent.core.config import AgentConfig
 from research_agent.core.events import FinalResult, ProgressEvent
 from research_agent.core.model_profile import apply_model_profile
@@ -127,7 +130,10 @@ def _require_empty_redis(config: AgentConfig, engine: str) -> None:
 
 
 async def _run_one(
-    config: AgentConfig, question: str, run_id: str
+    config: AgentConfig,
+    question: str,
+    run_id: str,
+    on_progress: Optional[Callable[[str], None]] = None,
 ) -> tuple[Optional[FinalResult], float, List[str]]:
     runner = ResearchRunner(config)
     final: Optional[FinalResult] = None
@@ -136,9 +142,36 @@ async def _run_one(
     async for event in runner.run(question, run_id=run_id):
         if isinstance(event, ProgressEvent):
             log.append(f"+{time.monotonic() - start:.1f}s {event.message}")
+            if on_progress is not None:
+                on_progress(event.message)
         else:
             final = event
     return final, time.monotonic() - start, log
+
+
+def _result_line(record: Dict[str, Any]) -> str:
+    """One line per finished question: pass/fail, status, time, judge scores."""
+    reasons = render.failures(record)
+    head = "FAIL" if reasons else "pass"
+    parts = [f"{head} {record.get('id')}", f"status={record.get('status')}"]
+    if isinstance(record.get("wall_s"), (int, float)):
+        parts.append(f"{record['wall_s']:.0f}s")
+    scores = [
+        f"{label}={record[key]}"
+        for label, key in (
+            ("ground", "judge_groundedness"),
+            ("complete", "judge_completeness"),
+            ("ref", "judge_reference_agreement"),
+        )
+        if isinstance(record.get(key), int)
+    ]
+    if scores:
+        parts.append("judge " + " ".join(scores))
+    elif record.get("judge_error"):
+        parts.append("judge error")
+    if reasons:
+        parts.append("(" + "; ".join(reasons) + ")")
+    return "  ".join(parts)
 
 
 async def _run_engine(
@@ -148,6 +181,8 @@ async def _run_engine(
     workdir: Path,
     redis_db: Optional[int],
     on_record: Optional[Callable[[Dict[str, Any]], Any]] = None,
+    progress: Optional[Progress] = None,
+    judge_complete: Optional[judge.CompleteFn] = None,
 ) -> List[Dict[str, Any]]:
     updates: Dict[str, Any] = {"engine": engine, "workdir": workdir / engine}
     if redis_db is not None:
@@ -157,14 +192,15 @@ async def _run_engine(
         _require_empty_redis(config, engine)
 
     records: List[Dict[str, Any]] = []
-    for number, spec in enumerate(questions, 1):
+    for spec in questions:
         qid = spec["id"]
-        print(
-            f"[{engine} {number}/{len(questions)}] {qid}: {spec['question']}",
-            file=sys.stderr,
-        )
+        if progress is not None:
+            progress.begin(engine, qid, spec["question"])
         final, wall_s, log = await _run_one(
-            config, spec["question"], f"eval-{engine}-{qid}"
+            config,
+            spec["question"],
+            f"eval-{engine}-{qid}",
+            on_progress=progress.update if progress is not None else None,
         )
         result = (
             final.model_dump(mode="json")
@@ -181,11 +217,12 @@ async def _run_engine(
         (out_dir / "progress.log").write_text("\n".join(log))
 
         record = scoring.score_result(result, spec)
-        print(
-            f"    -> status={record['status']} wall={record['wall_s']}s "
-            f"facts={record['source_hit_rate']} cite={record['citation_link_rate']}",
-            file=sys.stderr,
-        )
+        if judge_complete is not None:
+            if progress is not None:
+                progress.update("Judging the answer...")
+            record.update(await judge.judge_result(result, spec, judge_complete))
+        if progress is not None:
+            progress.finish(record, _result_line(record))
         records.append(record)
         if on_record is not None:
             on_record(record)
@@ -219,6 +256,11 @@ async def _main(argv: List[str]) -> int:
         "--markdown",
         default=None,
         help="Markdown report path (default: report.json's path with .md)",
+    )
+    parser.add_argument(
+        "--no-judge",
+        action="store_true",
+        help="skip the LLM judge (groundedness, completeness, reference agreement)",
     )
     parser.add_argument("--no-redis", action="store_true")
     parser.add_argument(
@@ -285,18 +327,39 @@ async def _main(argv: List[str]) -> int:
         all_records.append(record)
         write_reports(complete=False)
 
+    judge_complete = None if args.no_judge else judge.make_complete(base)
+    progress = Progress(total=len(questions) * len(args.engines))
+    log_handler = ProgressLogHandler(progress)
+    root_logger = logging.getLogger()
+    # The agent's own INFO logs would scroll the bar away; keep warnings.
+    previous_handlers, previous_level = root_logger.handlers[:], root_logger.level
+    root_logger.handlers = [log_handler]
+    root_logger.setLevel(logging.WARNING)
     try:
-        for index, engine in enumerate(args.engines):
-            redis_db = (
-                args.redis_db_base + index if args.redis_db_base is not None else None
-            )
-            await _run_engine(
-                engine, questions, base, workdir, redis_db, on_record=on_record
-            )
-    except KeyboardInterrupt:
+        async with progress:
+            for index, engine in enumerate(args.engines):
+                redis_db = (
+                    args.redis_db_base + index
+                    if args.redis_db_base is not None
+                    else None
+                )
+                await _run_engine(
+                    engine,
+                    questions,
+                    base,
+                    workdir,
+                    redis_db,
+                    on_record=on_record,
+                    progress=progress,
+                    judge_complete=judge_complete,
+                )
+    except (KeyboardInterrupt, asyncio.CancelledError):
         print("\nInterrupted; writing the partial report.", file=sys.stderr)
         write_reports(complete=False)
         raise
+    finally:
+        root_logger.handlers = previous_handlers
+        root_logger.setLevel(previous_level)
 
     report = write_reports(complete=True)
     print(render.terminal_summary(report))

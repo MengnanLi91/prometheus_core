@@ -98,7 +98,7 @@ def test_multi_engine_eval_assigns_separate_redis_databases(tmp_path, monkeypatc
         ),
     )
 
-    async def fake_run_engine(engine, specs, base, workdir, redis_db, on_record=None):
+    async def fake_run_engine(engine, specs, base, workdir, redis_db, on_record=None, **kwargs):
         calls.append((engine, redis_db))
         return []
 
@@ -116,6 +116,7 @@ def test_multi_engine_eval_assigns_separate_redis_databases(tmp_path, monkeypatc
                 "14",
                 "--report",
                 str(report),
+                "--no-judge",
             ]
         )
     )
