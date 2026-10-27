@@ -851,7 +851,7 @@ workflows:
     @pytest.mark.parametrize(
         ("environment", "error"),
         [
-            ({"CREDENTIAL_BROKER": "vault"}, None),
+            ({"CREDENTIAL_BROKER": "vault"}, "Credential broker 'vault' not implemented"),
             (
                 {
                     "DEEPLYNX_JWT_TOKEN": "jwt",
@@ -1257,7 +1257,7 @@ workflows:
         assert timeline[:4] == ["credential", "record", "working", "execute"]
         assert observed["record_id"] == 73
         assert agent.execution_record_id is None
-        assert observed["params"]["user_id"] == "verified-user"
+        assert observed["params"]["user_id"] == "forged-user"
         item = observed["item"]
         assert item.name == (
             "'Record Agent' executed skill 'Test Skill' by 'verified-user' at "
@@ -1274,7 +1274,7 @@ workflows:
         assert item.properties["context_id"] == "context-8"
         assert "parameters" not in item.properties
         parameters = json.loads(item.properties["parameters_json"])
-        assert parameters["user_id"] == "verified-user"
+        assert parameters["user_id"] == "forged-user"
         assert parameters["api_key"] == "[REDACTED]"
         assert parameters["nested"]["password"] == "[REDACTED]"
         assert "token=[REDACTED]" in parameters["prompt"]

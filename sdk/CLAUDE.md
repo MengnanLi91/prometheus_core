@@ -79,7 +79,7 @@ Subclasses override `async _execute(self, params, context: RequestContext, event
 
 Before `_execute`, the standard executor uses a just-in-time `deeplynx` credential to create a mandatory execution item. It records the agent, task, context, verified user, and effective parameters. The item name uses the invoked skill's agent-card name (falling back to its ID or a general execution name) and never includes the task ID; task correlation remains in the description, properties, and `original_id`. Parameters are recursively redacted and stored as JSON in the scalar `parameters_json` property to avoid DeepLynx's properties-depth limit; decode them with `json.loads(...)`. If record creation fails, the task fails before subclass work begins.
 
-During `_execute`, `self.execution_record_id` provides the request-scoped item ID and returns `None` outside that invocation. The verified identity replaces any caller-provided `params["user_id"]`. Deployments require valid DeepLynx credentials and either `DEEPLYNX_DATA_SOURCE_ID` or a project default data source.
+During `_execute`, `self.execution_record_id` provides the request-scoped item ID and returns `None` outside that invocation. The executor injects the verified identity into `params["user_id"]` only when the request does not already contain that parameter; execution-record identity metadata always uses the verified identity. Deployments require valid DeepLynx credentials and either `DEEPLYNX_DATA_SOURCE_ID` or a project default data source.
 
 Inside `_execute`, use the helpers rather than constructing A2A events manually:
 

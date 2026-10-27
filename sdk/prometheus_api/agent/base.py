@@ -517,7 +517,7 @@ class PrometheusAgentExecutor(AgentExecutor):
         from .identity import current_user_id as _current_user_id
 
         uid = _current_user_id()
-        if uid is not None:
+        if uid is not None and "user_id" not in params:
             params["user_id"] = uid
 
         logger.info("Extracted parameter keys: %s", sorted(params.keys()))
@@ -2103,7 +2103,7 @@ class PrometheusAgent:
         """Fail startup when required DeepLynx environment values are invalid."""
         broker = os.getenv("CREDENTIAL_BROKER", "env").strip().lower()
         if broker not in ("env", ""):
-            return
+            raise RuntimeError(f"Credential broker '{broker}' not implemented")
 
         jwt_token = os.getenv("DEEPLYNX_JWT_TOKEN", "").strip()
         key = os.getenv("DEEPLYNX_KEY", "").strip()
