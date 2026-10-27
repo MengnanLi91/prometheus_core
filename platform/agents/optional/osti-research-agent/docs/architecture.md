@@ -55,6 +55,19 @@ parsing tools. Only verified or verifier-corrected findings enter
 Operational verifier failures produce an error when no other finding was
 verified; evidence-based rejections produce `no_results`.
 
+### Final answer
+
+The orchestrator ends with `{"findings": [...]}`, which the runner ignores in
+favour of the verified findings it captured itself. `core/synthesis.py` then
+writes the cross-paper answer: a tool-less agent on the orchestrator route
+drafts it from those findings only, and a `RubricMiddleware` grader on the
+verifier route checks it against `prompts/synthesis_rubric.md`, allowing one
+revision. The grader's transcript is cut at 4000 characters per message, so it
+reads the findings through a `read_verified_findings` tool, and an answer
+longer than `MAX_ANSWER_CHARS` is rejected. The synthesis is used only when the
+grader ends `satisfied` and every `Paper N` citation is in range; otherwise the
+answer is the findings rendered per paper, as before.
+
 ## Tools (deepagent engine)
 
 Tools are thin `@tool` wrappers built per-run over a shared `RunContext`
@@ -118,6 +131,11 @@ always have one `paper.md` code path. Optional figure VLM analysis
 the contract; every consumer reads via them.
 
 ## Memory
+
+The knowledge base is **shared by every user** of the platform: facts and
+cached answers are not scoped per user or conversation. That is intended for
+public literature; do not point this agent at private documents without adding
+scoping first.
 
 `knowledge.RedisKnowledgeStore` implements the `KnowledgeStore` protocol.
 Retrieval is `SCAN` + in-process cosine over per-atomic-fact embeddings — **no

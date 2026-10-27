@@ -81,3 +81,28 @@ def test_deepagent_engine_salvages_timeout_partial(monkeypatch):
     assert final.provenance and final.provenance[0]["source"] == "OSTI #123"
     assert "confidence" not in final.provenance[0]
     assert len(final.findings) == 1
+
+
+def test_deep_timeout_partial_uses_recorded_titles_and_urls(monkeypatch):
+    async def hanging_run_deep(
+        question, config, run_id, *, findings=None, search_hits=None, **kwargs
+    ):
+        search_hits["10.1_ab"] = {
+            "title": "Open-access creep study",
+            "url": "https://doi.org/10.1/ab",
+            "origin": "openalex",
+        }
+        findings.append(Finding(source_id="10.1_ab", answer="a", evidence="Fig. 2"))
+        await asyncio.sleep(3600)
+        yield  # pragma: no cover - never reached
+
+    monkeypatch.setattr(deep_runner_module, "run_deep", hanging_run_deep)
+    config = AgentConfig(
+        litellm_base_url="http://unused", engine="deepagent", total_budget_s=31
+    )
+    runner = ResearchRunner(config, complete=_fake_complete)
+    final = asyncio.run(_drain(runner, "q?", "d3"))[-1]
+
+    assert final.status == "timeout_partial"
+    assert final.provenance[0]["title"] == "Open-access creep study"
+    assert final.provenance[0]["url"] == "https://doi.org/10.1/ab"

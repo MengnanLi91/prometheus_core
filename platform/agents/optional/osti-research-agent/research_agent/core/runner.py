@@ -131,6 +131,7 @@ class ResearchRunner:
 
         q: asyncio.Queue = asyncio.Queue()
         findings: List[Finding] = []
+        search_hits: Dict[str, dict] = {}
         deadline = time.monotonic() + max(self.config.total_budget_s - 30, 0)
 
         async def _job() -> None:
@@ -144,6 +145,7 @@ class ResearchRunner:
                     caches=self._pdf_cache,
                     pdf_cache=self._pdf_cache,
                     findings=findings,
+                    search_hits=search_hits,
                     deadline=deadline,
                 ):
                     await q.put(event)
@@ -156,7 +158,7 @@ class ResearchRunner:
                 await q.put(None)
 
         async for event in self._drain(
-            q, _job, run_id, lambda: _deep_timeout_result(question, findings)
+            q, _job, run_id, lambda: _deep_timeout_result(question, findings, search_hits)
         ):
             yield event
 
@@ -243,10 +245,15 @@ def _timeout_result(question: str, findings: List[Dict]) -> FinalResult:
     )
 
 
-def _deep_timeout_result(question: str, findings: List[Finding]) -> FinalResult:
+def _deep_timeout_result(
+    question: str, findings: List[Finding], search_hits: Dict[str, dict]
+) -> FinalResult:
     """Salvage a partial result for the deep engine from the Findings captured
-    off the stream so far. Titles/urls aren't on Finding (they live in the run
-    context, which the runner doesn't hold), so provenance here is minimal."""
+    off the stream so far, with titles/urls from the search hits recorded
+    during the run - the same provenance the completed path builds."""
+    from research_agent import citations
+    from research_agent.core.deep_runner import _findings_to_answers
+
     if findings:
         answer = (
             f"Research timed out after reaching the time budget. Found partial "
@@ -255,15 +262,9 @@ def _deep_timeout_result(question: str, findings: List[Finding]) -> FinalResult:
     else:
         answer = "Research timed out after reaching the time budget before finding any results."
 
-    provenance = [
-        {
-            "source": f"OSTI #{f.source_id}",
-            "title": "",
-            "url": "",
-            "excerpt": (f.excerpt or f.evidence or "")[:500],
-        }
-        for f in findings
-    ]
+    provenance, _ = citations.deduplicate_provenance_with_mapping(
+        _findings_to_answers(findings, search_hits)
+    )
 
     return FinalResult(
         status="timeout_partial",

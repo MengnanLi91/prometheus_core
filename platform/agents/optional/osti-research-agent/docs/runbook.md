@@ -58,6 +58,9 @@ delegations reuse its terminal result.
 
 ## Redis keys and TTLs
 
+These keys are global, not per user: every user's runs read and write the same
+facts and cached answers.
+
 `decode_responses=True` client (binary caches use a separate raw client).
 
 | Key | Contents | TTL |

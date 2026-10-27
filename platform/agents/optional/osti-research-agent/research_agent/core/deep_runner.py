@@ -163,13 +163,13 @@ def _last_ai_text(chunk: Dict) -> Optional[str]:
     return latest
 
 
-def _findings_to_answers(findings: List[Finding], ctx: RunContext) -> List[Dict]:
+def _findings_to_answers(findings: List[Finding], search_hits: Dict) -> List[Dict]:
     """Shape findings like the pipeline's ``answers_found`` dicts so the existing
     provenance/linkify helpers work unchanged; titles/urls come from the search
     hits recorded when the paper was found."""
     answers = []
     for f in findings:
-        hit = ctx.search_hits.get(f.source_id, {})
+        hit = search_hits.get(f.source_id, {})
         url = hit.get("url", "")
         if not url and f.source_id.isdigit():
             url = f"https://www.osti.gov/biblio/{f.source_id}"
@@ -236,7 +236,7 @@ async def build_final_result(
     # array is deliberately ignored because it can contain cached or invented
     # entries that never passed source-artifact verification.
     findings = list(ctx.findings)
-    answers = _findings_to_answers(findings, ctx)
+    answers = _findings_to_answers(findings, ctx.search_hits)
     if answers:
         # A cross-paper synthesis is used only when its grader is satisfied
         # and the code checks pass; otherwise render the findings verbatim.
@@ -299,6 +299,7 @@ async def run_deep(
     caches=None,
     pdf_cache=None,
     findings: Optional[List[Finding]] = None,
+    search_hits: Optional[Dict[str, dict]] = None,
     deadline: Optional[float] = None,
 ) -> AsyncIterator[AgentEvent]:
     """Run the deep agent for one question, yielding ProgressEvents then a single
@@ -338,6 +339,8 @@ async def run_deep(
         ctx.knowledge = RedisKnowledgeStore(redis_client, embedder.embed)
         if findings is not None:
             ctx.findings = findings  # share the list so the runner can salvage it
+        if search_hits is not None:
+            ctx.search_hits = search_hits  # titles/urls for the salvaged partial
 
         agent = build_research_agent(config, ctx)
 
