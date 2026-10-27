@@ -195,7 +195,7 @@ A tool result is compact JSON:
  "summary": "<answer/message/report text, ≤ 2 000 chars>",
  "artifacts": [{"artifact_id": "...", "name": "...", "mime_type": "...", "description": "..."}],
  "result": "<remaining JSON payload, ≤ 6 000 chars>",
- "inputs": {"<name>": "<value>"},
+ "inputs": {"<name>": "<value>"} (or its JSON, ≤ 2 000 chars),
  "input_sources": {"<name>": "model|user|context"},
  "error": "..."}
 ```
@@ -205,8 +205,9 @@ or a specialist's `INPUT_REQUIRED`, and values resolved from context) are merged
 call's arguments, so they are part of `turn_tool_inputs` and the params the agent
 receives. Each call tracks `input_sources`: `model` for the model's own arguments, `user`
 for form answers, `context` for values the platform filled in. When anything other than
-the model supplied an input, the tool result includes `inputs` (what ran) and
-`input_sources`, so the model credits each value correctly. The sources also travel to
+the model supplied an input, the tool result includes those `inputs` (the model's own
+arguments are already in its tool call) and `input_sources` for every argument, so the
+model credits each value correctly. The sources also travel to
 the agent as A2A message metadata `inputSources`.
 
 Agents read every input from `params` and the sources with

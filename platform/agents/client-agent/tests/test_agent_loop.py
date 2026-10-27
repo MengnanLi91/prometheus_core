@@ -751,7 +751,7 @@ def test_specialist_form_answers_are_recorded_and_shown_to_the_model(harness) ->
 
     def sees_inputs(request):
         content = json.loads(request["messages"][-1]["content"])
-        assert content["inputs"] == {"material_id": "SS316", "temperature_c": 500, "rod_diameter_mm": 9.5}
+        assert content["inputs"] == {"rod_diameter_mm": 9.5}  # the model already has its own arguments
         assert content["input_sources"] == {
             "material_id": "model",
             "temperature_c": "model",
@@ -798,7 +798,7 @@ def test_input_sources_distinguish_model_user_and_context(harness) -> None:
 
     def sees_sources(request):
         content = json.loads(request["messages"][-1]["content"])
-        assert content["inputs"] == {**model_args, "units": "SI", "mesh": "fine"}
+        assert content["inputs"] == {"units": "SI", "mesh": "fine"}
         assert content["input_sources"] == {
             "material_id": "model",
             "temperature_c": "model",
@@ -822,6 +822,37 @@ def test_input_sources_distinguish_model_user_and_context(harness) -> None:
     assert filled["_input_sources"] == {"material_id": "model", "temperature_c": "model", "units": "context"}
     assert (answered["units"], answered["mesh"]) == ("SI", "fine")
     assert answered["_input_sources"]["mesh"] == "user"
+
+
+def test_tool_result_bounds_a_large_supplied_input(harness) -> None:
+    replies = iter(
+        [
+            {
+                "input_required": {"missing_inputs": [{"name": "notes", "type": "string", "resolvable_from_context": True}]},
+                "_a2a_task_id": "task-1",
+            },
+            {"result": {"answer": "Done."}},
+        ]
+    )
+    harness.results.update(analyze_thermal=lambda params: next(replies))
+
+    def sees_bounded_inputs(request):
+        content = json.loads(request["messages"][-1]["content"])
+        assert len(content["inputs"]) < agent_loop.SUMMARY_CHARS + 100
+        assert "truncated" in content["inputs"]
+        assert content["input_sources"]["notes"] == "context"
+        return reply("Analysis complete.")
+
+    harness.script(
+        [
+            reply(calls=[tool_call("analyze_thermal", {"material_id": "SS316", "temperature_c": 500}, "c1")]),
+            sees_bounded_inputs,
+        ]
+    )
+    harness.store[CONV] = {"context": {"notes": "x" * 10_000}}
+
+    assert send(query="Analyze SS316 at 500 C").status == "completed"
+    assert harness.invocations[1][1]["notes"] == "x" * 10_000  # the agent still gets all of it
 
 
 def test_tool_result_omits_sources_when_the_model_supplied_everything(harness) -> None:

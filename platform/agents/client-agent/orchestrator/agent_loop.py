@@ -948,10 +948,12 @@ async def _settle_skill_item(
     payload = _compact_result(result, "succeeded")
     # Inputs supplied after the call was made are part of what ran; the model
     # must see them and who supplied each, or it credits the skill with the
-    # user's choice.
+    # user's choice. Its own arguments are already in the tool call.
     sources = call.get("input_sources") or {}
-    if any(source != "model" for source in sources.values()):
-        payload["inputs"] = copy.deepcopy(call["arguments"])
+    supplied = {name: call["arguments"][name] for name, source in sources.items() if source != "model"}
+    if supplied:
+        encoded = json.dumps(supplied, default=str)
+        payload["inputs"] = copy.deepcopy(supplied) if len(encoded) <= SUMMARY_CHARS else _truncate(encoded, SUMMARY_CHARS)
         payload["input_sources"] = dict(sources)
     _finish(call, payload)
 
