@@ -22,6 +22,7 @@ import { LeftPanel } from "../components/LeftPanel";
 import { Home } from "../components/dashboard/Home";
 import { ComingSoon } from "../components/dashboard/ComingSoon";
 import { navLabel, type NavId } from "../components/dashboard/nav";
+import { WorkflowConsole } from "../components/workflows/WorkflowConsole";
 
 interface Props {
   onLogout: () => void;
@@ -76,7 +77,8 @@ export function ProjectView({ onLogout }: Props) {
               <Home />
             </div>
             {activeNav === "admin" && currentUser?.role === "admin" && <AdminSection />}
-            {activeNav !== "home" && activeNav !== "admin" && (
+            {activeNav === "workflows" && <WorkflowConsole />}
+            {activeNav !== "home" && activeNav !== "admin" && activeNav !== "workflows" && (
               <ComingSoon label={navLabel(activeNav)} />
             )}
           </main>
