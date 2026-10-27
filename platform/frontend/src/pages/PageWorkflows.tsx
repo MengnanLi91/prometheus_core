@@ -12,7 +12,52 @@
 
 import { usePageHeader } from "@/lib/store/pageHeader";
 import { WorkflowConsole } from "../components/workflows/WorkflowConsole";
+import type { WorkflowGraphNode, WorkflowGraphWire } from "../components/workflows/WorkflowGraph";
 import type { WorkflowTemplate } from "../components/workflows/WorkflowTemplateCard";
+
+// Placeholder graph for Comprehensive Material Analysis, laid out as in Figma D.1.
+const EXAMPLE_NODES: WorkflowGraphNode[] = [
+  {
+    id: "retrieve",
+    type: "agent",
+    position: { x: 286, y: 16 },
+    data: { name: "Retrieve Material", status: "done", input: "material_id", output: "material_data", est: "8s", width: 200 },
+  },
+  {
+    id: "radiation",
+    type: "agent",
+    position: { x: 94, y: 190 },
+    data: { name: "Radiation", status: "queued", input: "material_data", output: "rad_result", est: "40s", width: 176 },
+  },
+  {
+    id: "corrosion",
+    type: "agent",
+    position: { x: 298, y: 190 },
+    data: { name: "Corrosion", status: "queued", input: "material_data", output: "corr_result", est: "35s", width: 176 },
+  },
+  {
+    id: "thermal",
+    type: "agent",
+    position: { x: 502, y: 190 },
+    data: { name: "Thermal", status: "queued", input: "material_data", output: "therm_result", est: "50s", width: 176 },
+  },
+  { id: "sme-review", type: "checkpoint", position: { x: 362, y: 356 }, data: { name: "SME Review" } },
+  {
+    id: "synthesize",
+    type: "agent",
+    position: { x: 276, y: 460 },
+    data: { name: "Synthesize Report", status: "blocked", input: "3 results", output: "final_report", est: "15s", width: 220 },
+  },
+];
+const EXAMPLE_WIRES: WorkflowGraphWire[] = [
+  { from: "retrieve", to: "radiation" },
+  { from: "retrieve", to: "corrosion" },
+  { from: "retrieve", to: "thermal" },
+  { from: "radiation", to: "sme-review" },
+  { from: "corrosion", to: "sme-review" },
+  { from: "thermal", to: "sme-review" },
+  { from: "sme-review", to: "synthesize" },
+];
 
 // Placeholder templates from Figma D.1. Comprehensive Material Analysis is the
 // example workflow, so it's shown as selected.
@@ -63,5 +108,11 @@ const SELECTED_TEMPLATE_ID = "comprehensive-material-analysis";
 export function PageWorkflows() {
   usePageHeader({ title: "Workflow Console" });
 
-  return <WorkflowConsole templates={TEMPLATES} selectedId={SELECTED_TEMPLATE_ID} />;
+  return (
+    <WorkflowConsole
+      templates={TEMPLATES}
+      selectedId={SELECTED_TEMPLATE_ID}
+      graph={{ nodes: EXAMPLE_NODES, wires: EXAMPLE_WIRES }}
+    />
+  );
 }
