@@ -14,7 +14,6 @@
 progress bar. No model, network, or terminal is needed."""
 
 import asyncio
-import io
 import json
 
 import pytest
@@ -23,7 +22,6 @@ from evals import judge
 from evals import report as render
 from evals import run as eval_run
 from evals import scoring
-from evals.progress import Progress
 from research_agent.core.config import AgentConfig
 from research_agent.core.events import FinalResult
 
@@ -182,7 +180,7 @@ def test_run_judges_each_question_and_reports_scores(tmp_path, monkeypatch, caps
     markdown = report_path.with_suffix(".md").read_text()
     assert "## Judge notes" in markdown and "Misses the gap conductivity range." in markdown
     err = capsys.readouterr().err
-    assert "FAIL uq-one" in err and "judge ground=5 complete=4 ref=3" in err
+    assert "FAIL  uq-one" in err and "judge ground=5 complete=4 ref=3" in err
 
 
 def test_score_result_is_unchanged_by_the_judge_fields():
@@ -190,55 +188,3 @@ def test_score_result_is_unchanged_by_the_judge_fields():
     record = scoring.score_result({**RESULT, "_engine": "deepagent"}, UQ_SPEC)
 
     assert not any(k.startswith("judge_") for k in record)
-
-
-# --- progress bar -------------------------------------------------------
-
-
-def test_progress_off_a_terminal_prints_one_line_per_event():
-    stream = io.StringIO()
-    progress = Progress(total=2, stream=stream, live=False)
-
-    progress.begin("deepagent", "q1", "What?")
-    progress.update("Searching OSTI...")  # no line for live status off a terminal
-    progress.finish({}, "pass q1  status=completed")
-
-    assert stream.getvalue() == (
-        "[deepagent 1/2] q1: What?\n  ok pass q1  status=completed\n"
-    )
-    assert progress.done == 1
-
-
-def test_progress_line_shows_count_percent_question_and_eta(monkeypatch):
-    clock = iter([0.0, 0.0, 60.0, 60.0, 90.0, 90.0, 90.0, 90.0])
-    monkeypatch.setattr("evals.progress.time.monotonic", lambda: next(clock))
-    progress = Progress(total=4, stream=io.StringIO(), live=False)
-
-    progress.begin("deepagent", "q1", "?")
-    progress.finish({}, "pass q1")  # took 60s
-    progress.begin("deepagent", "q2", "?")
-    progress.update("Parsing paper (tables + figures)...")
-    line = progress.line(width=200)
-
-    assert line.startswith("[####--------------] 1/4  25%  deepagent  q2")
-    assert "ETA 2m30s" in line  # 3 left x 60s, minus 30s into the current one
-    assert line.endswith("Parsing paper (tables + figures)...")
-
-
-def test_progress_line_is_cut_to_the_terminal_width():
-    progress = Progress(total=1, stream=io.StringIO(), live=False)
-    progress.begin("deepagent", "q" * 50, "?")
-
-    assert len(progress.line(width=40)) == 40
-
-
-def test_live_progress_redraws_in_place_and_clears_before_writing():
-    stream = io.StringIO()
-    progress = Progress(total=2, stream=stream, live=True)
-
-    progress.begin("deepagent", "q1", "?")
-    progress.write("WARNING something")
-
-    out = stream.getvalue()
-    assert out.startswith("\r\x1b[2K[")  # bar drawn in place
-    assert "\r\x1b[2KWARNING something\n" in out  # cleared, then the log line

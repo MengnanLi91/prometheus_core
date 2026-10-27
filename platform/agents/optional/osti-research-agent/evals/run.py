@@ -49,6 +49,7 @@ import yaml
 from evals import judge
 from evals import report as render
 from evals import scoring
+from evals.console import make_console, print_summary
 from evals.progress import Progress, ProgressLogHandler
 from research_agent.core.config import AgentConfig
 from research_agent.core.events import FinalResult, ProgressEvent
@@ -149,31 +150,6 @@ async def _run_one(
     return final, time.monotonic() - start, log
 
 
-def _result_line(record: Dict[str, Any]) -> str:
-    """One line per finished question: pass/fail, status, time, judge scores."""
-    reasons = render.failures(record)
-    head = "FAIL" if reasons else "pass"
-    parts = [f"{head} {record.get('id')}", f"status={record.get('status')}"]
-    if isinstance(record.get("wall_s"), (int, float)):
-        parts.append(f"{record['wall_s']:.0f}s")
-    scores = [
-        f"{label}={record[key]}"
-        for label, key in (
-            ("ground", "judge_groundedness"),
-            ("complete", "judge_completeness"),
-            ("ref", "judge_reference_agreement"),
-        )
-        if isinstance(record.get(key), int)
-    ]
-    if scores:
-        parts.append("judge " + " ".join(scores))
-    elif record.get("judge_error"):
-        parts.append("judge error")
-    if reasons:
-        parts.append("(" + "; ".join(reasons) + ")")
-    return "  ".join(parts)
-
-
 async def _run_engine(
     engine: str,
     questions: List[Dict[str, Any]],
@@ -222,7 +198,7 @@ async def _run_engine(
                 progress.update("Judging the answer...")
             record.update(await judge.judge_result(result, spec, judge_complete))
         if progress is not None:
-            progress.finish(record, _result_line(record))
+            progress.finish(record)
         records.append(record)
         if on_record is not None:
             on_record(record)
@@ -328,7 +304,9 @@ async def _main(argv: List[str]) -> int:
         write_reports(complete=False)
 
     judge_complete = None if args.no_judge else judge.make_complete(base)
-    progress = Progress(total=len(questions) * len(args.engines))
+    out = make_console()
+    err = make_console(stderr=True)
+    progress = Progress(total=len(questions) * len(args.engines), console=err)
     log_handler = ProgressLogHandler(progress)
     root_logger = logging.getLogger()
     # The agent's own INFO logs would scroll the bar away; keep warnings.
@@ -357,24 +335,23 @@ async def _main(argv: List[str]) -> int:
         # Ctrl+C: asyncio.run cancels this task. Keep what finished and stop
         # cleanly instead of re-raising into a traceback.
         report = write_reports(complete=False)
-        print(
-            f"\nInterrupted after {len(all_records)} of "
-            f"{len(questions) * len(args.engines)} question(s).",
-            file=sys.stderr,
+        err.print(
+            f"\n[bold yellow]Interrupted[/] after {len(all_records)} of "
+            f"{len(questions) * len(args.engines)} question(s)."
         )
         if all_records:
-            print(render.terminal_summary(report))
-        print(f"\nPartial report: {report_path}, {markdown_path}", file=sys.stderr)
+            print_summary(out, report)
+        err.print(f"\nPartial report: {report_path}, {markdown_path}", markup=False)
         return INTERRUPTED_EXIT
     finally:
         root_logger.handlers = previous_handlers
         root_logger.setLevel(previous_level)
 
     report = write_reports(complete=True)
-    print(render.terminal_summary(report))
-    print(
+    print_summary(out, report)
+    err.print(
         f"\nWrote {report_path}, {markdown_path} and transcripts under {workdir}/",
-        file=sys.stderr,
+        markup=False,
     )
     return 0
 

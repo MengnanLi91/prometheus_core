@@ -26,6 +26,8 @@ dependencies = [
     "langchain-litellm>=0.11.1,<0.12",
     # LiteLLM tool-call logging imports MCP types at runtime.
     "mcp>=2.2.0,<3",
+    # Terminal output of the evaluation CLI (evals/); already locked via docling.
+    "rich>=13",
 ]
 
 # The A2A executor (agent.py) additionally needs prometheus_api and a2a-sdk.

@@ -88,10 +88,10 @@ def test_run_writes_json_and_markdown_and_prints_a_summary(tmp_path, fake_engine
     assert "What is the melting point of unobtainium-42?" in markdown
 
     out = capsys.readouterr().out
-    assert "deepagent  1/3" in out
-    assert "[deepagent] nonsense: status 'completed' not the expected one; " \
-           "completed with no sources" in out
-    assert "[deepagent] uq-one: citation_link_rate 0.00" in out
+    assert "OSTI evaluation  1/3 passed" in out
+    assert "Per-engine summary" in out and "Failed (2)" in out
+    assert "status 'completed' not the expected one; completed with no" in out
+    assert "citation_link_rate 0.00" in out
 
 
 def test_filters_by_id_category_and_limit(tmp_path, fake_engine):
@@ -139,7 +139,7 @@ def test_report_command_reprints_a_saved_report(tmp_path, fake_engine, capsys):
     capsys.readouterr()
 
     assert cli.main(["report", str(tmp_path / "r" / "report.json")]) == 0
-    assert "OSTI evaluation: 3 question(s)" in capsys.readouterr().out
+    assert "OSTI evaluation  1/3 passed" in capsys.readouterr().out
     assert cli.main(["report", str(tmp_path / "missing.json")]) == 1
 
 
@@ -223,7 +223,7 @@ def test_ctrl_c_writes_a_partial_report_and_exits_without_a_traceback(tmp_path):
     assert proc.returncode == eval_run.INTERRUPTED_EXIT
     assert "Traceback" not in err
     assert "Interrupted after 1 of 3 question(s)." in err
-    assert "OSTI evaluation: 3 question(s)" in out
+    assert "OSTI evaluation  0/1 passed" in out and "partial run" in out
     partial = json.loads(report_path.read_text())
     assert partial["complete"] is False
     assert [r["id"] for r in partial["records"]] == ["ss316-creep"]

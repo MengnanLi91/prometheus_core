@@ -37,9 +37,15 @@ def _report(argv: List[str]) -> int:
         print(f"no report at {path}; run `python -m evals run` first", file=sys.stderr)
         return 1
     report = json.loads(path.read_text())
-    print(render.terminal_summary(report))
-    if not report.get("complete", True):
-        print("\n(This report is partial: the run did not finish.)")
+    try:
+        from evals.console import make_console, print_summary
+    except ImportError:
+        # A bare python3 without rich (make osti-eval-report on the host).
+        print(render.terminal_summary(report))
+        if not report.get("complete", True):
+            print("\n(This report is partial: the run did not finish.)")
+    else:
+        print_summary(make_console(), report)
     return 0
 
 
