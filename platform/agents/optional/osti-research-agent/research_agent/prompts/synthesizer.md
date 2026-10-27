@@ -13,6 +13,9 @@ Write an answer that:
    methods the findings report.
 6. When the findings do not report something the question asks for, says so
    plainly. Do not estimate, extrapolate, or invent a numeric range.
+   A finding with `match: "nearest"` was reported at other conditions than
+   those asked: present it as the nearest reported data, with the conditions
+   it was reported at, never as the value at the asked conditions.
 7. Ends with a short "Limitations" paragraph.
 
 Do not add facts from general knowledge. Keep the whole answer under

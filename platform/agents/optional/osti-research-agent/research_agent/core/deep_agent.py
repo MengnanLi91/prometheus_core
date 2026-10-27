@@ -62,6 +62,9 @@ class VerificationResult(BaseModel):
     excerpt: str
     artifacts: list[str]
     reason: str
+    # Optional so older verifier replies stay valid; missing means the
+    # candidate's label stands.
+    match: str = ""
 
 
 def _register_runtime_profiles(config: AgentConfig) -> None:
@@ -387,12 +390,16 @@ def _validated_finding(
     if not result.answer.strip() or not result.evidence.strip():
         raise VerifierProtocolError("accepted verification omitted answer or evidence")
 
+    match = (result.match or candidate.match).strip().lower()
+    if match not in {"exact", "nearest"}:
+        raise VerifierProtocolError(f"unknown verifier match {result.match!r}")
     return (
         Finding(
             source_id=result.source_id,
             answer=result.answer.strip(),
             evidence=result.evidence.strip(),
             excerpt=result.excerpt.strip() or None,
+            match=match,
             artifacts=_validated_artifacts(
                 result.artifacts,
                 paper_directory,
@@ -401,6 +408,17 @@ def _validated_finding(
             ),
         ),
         result.reason.strip(),
+    )
+
+
+def _not_used(source_id: str, reason: str, ctx: RunContext, *, by: str) -> None:
+    """Show and keep why a paper produced no finding, so a run that ends in
+    no_results says which papers were read and why each was not used."""
+    reason = " ".join(str(reason).split())[:300] or "no reason given"
+    ctx.unused_papers[source_id] = {"by": by, "reason": reason}
+    progress.emit(
+        f"Paper {source_id} not used ({by}): {reason}",
+        {"source_id": source_id, "not_used_by": by},
     )
 
 
@@ -490,6 +508,7 @@ async def _analyze_and_verify(
 
         candidate, reason = _parse_candidate(analysis)
         if candidate is None:
+            _not_used(requested_source_id, reason, ctx, by="analyzer")
             result = {"answered": False, "reason": reason}
             ctx.paper_analysis_results[requested_source_id] = result
             return dict(result)
@@ -562,6 +581,7 @@ async def _analyze_and_verify(
                 f"Rejected unsupported finding from source {candidate.source_id}",
                 {"source_id": candidate.source_id},
             )
+            _not_used(candidate.source_id, reason, ctx, by="verifier")
             result = {"answered": False, "reason": reason}
             ctx.paper_analysis_results[requested_source_id] = result
             return dict(result)

@@ -35,6 +35,8 @@ _FINDING_FIELD_HINTS = {
     "evidence": "supporting data; cite the table/figure indices you used (string)",
     "excerpt": "a short exact quote from paper.md, or null",
     "artifacts": "paths of the artifact files you actually read (list of strings)",
+    "match": '"exact" if the paper reports what was asked at the asked conditions, '
+    '"nearest" if it reports only the closest data',
 }
 
 _missing = set(Finding.model_fields) - set(_FINDING_FIELD_HINTS)

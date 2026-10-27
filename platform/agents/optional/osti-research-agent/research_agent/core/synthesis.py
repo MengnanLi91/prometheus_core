@@ -61,6 +61,7 @@ def findings_payload(answers: List[Dict]) -> List[Dict[str, Any]]:
             "answer": answer.get("answer", ""),
             "evidence": answer.get("evidence", ""),
             "excerpt": answer.get("excerpt", ""),
+            "match": answer.get("match", "exact"),
         }
         for index, answer in enumerate(answers, 1)
     ]

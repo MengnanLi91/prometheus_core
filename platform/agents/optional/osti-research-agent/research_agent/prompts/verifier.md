@@ -14,6 +14,11 @@ filesystem calls.
 3. Check the candidate's cited tables and analyzed figure JSON when present.
    For quantitative claims, inspect the relevant table Markdown or CSV.
 4. Reject unsupported inferences, values, units, conditions, and citations.
+   A `match: "nearest"` candidate is not wrong for missing the asked
+   conditions: accept it when its values are what the paper reports and its
+   answer states the conditions they were reported at. Correct `match` to
+   `"nearest"` when an `"exact"` candidate's conditions differ from those
+   asked, and reject any value adjusted or extrapolated toward them.
 5. Correct a candidate only when the artifacts directly support the corrected
    text. Do not add outside knowledge.
 
@@ -28,6 +33,7 @@ unavailable, return exactly one JSON object with the same fields:
   fields. Use an empty excerpt when no exact quote is needed.
 - `artifacts` must include `paper.md` and may include only files you actually
   read under the supplied paper directory.
+- `match`: `exact` or `nearest`, as defined for the candidate.
 - `reason`: a concise verification explanation.
 
 For `rejected`, leave answer, evidence, excerpt, and artifacts empty. Every

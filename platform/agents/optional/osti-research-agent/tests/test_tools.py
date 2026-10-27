@@ -353,7 +353,29 @@ def test_parse_paper_returns_error_string_when_pipeline_raises(monkeypatch):
     out = json.loads(asyncio.run(parse.ainvoke({"source_id": "123"})))
     assert out["ok"] is False
     assert "parse failed" in out["error"]
-    assert ctx.papers_attempted == 1  # the attempt still counts against budget
+    # A failed parse gives its paper slot back so the run can try another paper.
+    assert ctx.papers_attempted == 0
+    assert "did not use up the paper budget" in out["instruction"]
+
+
+def test_failed_parse_is_not_retried(monkeypatch):
+    calls = []
+
+    async def boom(*a, **k):
+        calls.append(1)
+        raise RuntimeError("docling exploded")
+
+    monkeypatch.setattr(parse_pipeline, "parse_paper_pipeline", boom)
+    ctx = _ctx()
+    ctx.pdf_paths["123"] = "/tmp/123.pdf"
+    parse = _tool(build_osti_tools(ctx), "parse_paper")
+
+    asyncio.run(parse.ainvoke({"source_id": "123"}))
+    again = json.loads(asyncio.run(parse.ainvoke({"source_id": "123"})))
+
+    assert len(calls) == 1  # remembered, so the slot refund can't loop
+    assert again["ok"] is False and "parse failed" in again["error"]
+    assert ctx.papers_attempted == 0
 
 
 # --- knowledge base -------------------------------------------------------

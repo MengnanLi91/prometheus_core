@@ -42,8 +42,8 @@ TRIAGE BEFORE DOWNLOADING. Read the abstracts and download only the most
 promising papers - at most {max_papers}. Downloading and parsing are the
 expensive steps; do not download papers whose abstracts don't clearly bear on
 the question. For a narrow quantitative question, stop after two independent
-relevant findings agree; analyze another paper only to resolve a conflict or a
-missing condition.
+`exact` findings agree; analyze another paper to resolve a conflict, or when
+your findings are only `nearest`, to look for one at the asked conditions.
 
 ANALYZE AND VERIFY. For each promising paper: call `download_paper` (for
 an OSTI result pass its osti_id; for a scholarly/web result pass `url` set to the
@@ -57,6 +57,15 @@ a verified/corrected Finding or `answered: false`. Collect only the Findings it
 returns. If it returns `terminal: true`, record that result and do not call
 `analyze_paper` for that source again. If it returns `terminal: false`, perform
 the stated `required_action` before retrying.
+
+DON'T GIVE UP EARLY. `answered: false` from `analyze_paper` says what that
+paper reports instead; use it to pick the next paper or refine the next query.
+Before emitting the final JSON with no findings, keep going while the paper and
+time budget allow: analyze the next most promising unread search result, and
+if none is left, search again with a reformulated query (broader material
+class, neighbouring conditions, or the property's other names). A paper whose
+download or parse failed does not use up the paper budget - move on to the next.
+A `match: "nearest"` finding is a useful partial answer; keep it.
 
 STORE FACTS. Before finishing, call `store_facts` with a JSON array of 3-10
 discrete, reusable facts ({{"content", "topics", "source_id", "source_title",
@@ -76,5 +85,5 @@ range to fill a gap.
 
 BUDGET. You have roughly {budget_min} minutes total; parsing a paper costs about
 {parse_min} minutes. The download/parse tools will refuse once the paper limit
-or the time budget is reached - when that happens, stop searching and emit the
-final JSON with the Findings you already have.
+or the time budget is reached - only then stop searching and emit the final JSON
+with the Findings you already have.

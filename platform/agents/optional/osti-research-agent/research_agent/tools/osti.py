@@ -228,6 +228,10 @@ def build_osti_tools(ctx: RunContext) -> List[BaseTool]:
         source_id = str(source_id)
         if source_id in ctx.parsed_papers:
             return json.dumps(ctx.parsed_papers[source_id])
+        if source_id in ctx.parse_failures:
+            return json.dumps(
+                {"ok": False, "source_id": source_id, "error": ctx.parse_failures[source_id]}
+            )
 
         pdf_path = ctx.pdf_paths.get(source_id)
         if not pdf_path:
@@ -252,8 +256,10 @@ def build_osti_tools(ctx: RunContext) -> List[BaseTool]:
         async def _forward(message: str, **detail) -> None:
             progress.emit(message, detail or None)
 
-        # Count the attempt before parsing so a repeatedly-failing paper can't
-        # loop against the paper budget.
+        # Count the attempt before parsing so a paper that hangs the parser
+        # still uses a slot; an outright failure gives it back (below) so a bad
+        # PDF doesn't cost the run a paper. Failures are remembered, so the
+        # same PDF can't loop.
         ctx.papers_attempted += 1
         try:
             parsed = await parse_pipeline.parse_paper_pipeline(
@@ -266,8 +272,18 @@ def build_osti_tools(ctx: RunContext) -> List[BaseTool]:
             )
         except Exception as e:  # keep the tool contract: return a string, don't raise
             logger.warning("parse_paper failed for %s: %s", source_id, e)
+            ctx.papers_attempted -= 1
+            ctx.parse_failures[source_id] = f"parse failed: {e}"
             return json.dumps(
-                {"ok": False, "source_id": source_id, "error": f"parse failed: {e}"}
+                {
+                    "ok": False,
+                    "source_id": source_id,
+                    "error": ctx.parse_failures[source_id],
+                    "instruction": (
+                        "This paper did not use up the paper budget; try the next "
+                        "most promising search result instead."
+                    ),
+                }
             )
         safe_id = _safe_source_id(source_id)
         summary = _parse_summary(parsed, safe_id)

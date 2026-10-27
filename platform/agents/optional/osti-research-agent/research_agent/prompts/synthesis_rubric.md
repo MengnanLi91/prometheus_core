@@ -17,3 +17,5 @@ Criteria:
 5. The answer directly addresses the research question, and says plainly when
    the findings do not report a requested value instead of estimating one.
 6. The answer states its limitations.
+7. Every finding whose `match` is `nearest` is presented as data at the
+   conditions it was reported at, not as the value at the asked conditions.

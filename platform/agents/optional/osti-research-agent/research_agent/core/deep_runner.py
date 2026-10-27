@@ -181,6 +181,7 @@ def _findings_to_answers(findings: List[Finding], search_hits: Dict) -> List[Dic
                 "excerpt": (f.excerpt or f.evidence or "")[:500],
                 "answer": f.answer,
                 "evidence": f.evidence,
+                "match": f.match,
             }
         )
     return answers
@@ -196,6 +197,11 @@ def _render_grounded_answer(answers: List[Dict]) -> str:
             heading += f": {title}"
         evidence = str(answer.get("evidence", "") or "").strip()
         grounded_text = evidence or str(answer.get("answer", "")).strip()
+        if answer.get("match") == "nearest":
+            grounded_text = (
+                "Nearest data reported (not at the exact conditions asked): "
+                + grounded_text
+            )
         sections.extend(
             [
                 heading,
@@ -203,13 +209,16 @@ def _render_grounded_answer(answers: List[Dict]) -> str:
             ]
         )
 
-    sections.extend(
-        [
-            "## Limitations",
-            "This answer is limited to the analyzed findings above; no estimate "
-            "or extrapolation was added.",
-        ]
+    limitation = (
+        "This answer is limited to the analyzed findings above; no estimate "
+        "or extrapolation was added."
     )
+    if any(a.get("match") == "nearest" for a in answers):
+        limitation += (
+            " Findings marked as nearest data were reported at other conditions "
+            "than those asked; they are not values at the asked conditions."
+        )
+    sections.extend(["## Limitations", limitation])
     return "\n\n".join(sections)
 
 

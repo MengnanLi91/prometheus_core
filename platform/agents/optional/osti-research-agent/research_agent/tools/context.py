@@ -70,6 +70,9 @@ class RunContext:
     pdf_paths: Dict[str, str] = field(default_factory=dict)
     # source_id -> prior terminal download failure, so retries stay local.
     download_failures: Dict[str, str] = field(default_factory=dict)
+    # source_id -> why its parse failed; failed parses don't use a paper slot,
+    # so this is what stops the same PDF from being retried.
+    parse_failures: Dict[str, str] = field(default_factory=dict)
     # Successful parse summaries, used to make parse_paper idempotent.
     parsed_papers: Dict[str, dict] = field(default_factory=dict)
     # Normalized queries already charged against each search provider's limit.
@@ -89,6 +92,9 @@ class RunContext:
     # Invalid structured requests have no usable parsed source, so cache them
     # separately without consuming analyzer or verifier calls.
     invalid_paper_analysis_results: Dict[str, dict] = field(default_factory=dict)
+    # source_id -> {"by": "analyzer" | "verifier", "reason": ...} for papers
+    # that were analyzed but produced no finding.
+    unused_papers: Dict[str, dict] = field(default_factory=dict)
     # Papers whose parse was attempted, counted before parsing so a PDF that
     # keeps failing to parse still uses up its slot. This is the paper budget;
     # FinalResult.papers_analyzed reports analyses instead.

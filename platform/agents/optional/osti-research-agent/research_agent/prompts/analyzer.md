@@ -36,9 +36,19 @@ If the paper answers the question, output a Finding:
 
 {finding_schema}
 
-If the paper does NOT contain enough information to answer, output instead:
+Set `match` to `"exact"` when the paper reports what was asked at the asked
+conditions. When it reports the same quantity for the same kind of material,
+but not at the exact conditions asked (another temperature, stress, dose, test
+method, or material grade), still return a Finding with `match: "nearest"`:
+give the closest values the paper reports, and say plainly in `answer` and
+`evidence` how they differ from what was asked (for example "reported at 425 C
+and 20 MPa, not 400 C and 15 MPa"). Never adjust, interpolate, or extrapolate a
+value toward the asked conditions.
 
-{{"answered": false, "reason": "<one sentence on why this paper doesn't answer the question>"}}
+If the paper reports nothing about the asked quantity for this kind of
+material, output instead:
+
+{{"answered": false, "reason": "<one sentence: what the paper does report, and why that does not answer the question>"}}
 
 Do not wrap the JSON in prose or markdown fences. Do not include more than one
 JSON object.
