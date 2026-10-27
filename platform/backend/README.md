@@ -115,7 +115,7 @@ Consequences worth knowing:
   the pool's workers are killed. That can also abort a conversion running concurrently; it
   degrades down the same "no mesh data" path.
 - `PROMETHEUS_MESH_CACHE_DIR` should be a persistent volume (compose mounts the `mesh-cache`
-  named volume at `/var/cache/prometheus-mesh`). The cache is content-hash keyed, so anything it
+  named volume at `/cache/prometheus-mesh`). The cache is content-hash keyed, so anything it
   retains is a conversion never repeated — including when a past conversation is reopened.
 
 ### Session state lives in Valkey

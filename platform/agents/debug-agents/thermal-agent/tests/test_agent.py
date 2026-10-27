@@ -16,7 +16,9 @@ from __future__ import annotations
 
 import asyncio
 import importlib.util
+import json
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 from a2a.server.agent_execution.context import RequestContext
@@ -33,7 +35,7 @@ _SPEC.loader.exec_module(_MODULE)
 ThermalAnalysisAgent = _MODULE.ThermalAnalysisAgent
 
 
-def test_thermal_agent_requests_temperature_and_persists_context_state():
+def test_thermal_agent_requests_temperature():
     agent = ThermalAnalysisAgent(agent_name="Thermal Analysis Agent")
     context = MagicMock(spec=RequestContext)
     context.task_id = "task-1"
@@ -54,6 +56,52 @@ def test_thermal_agent_requests_temperature_and_persists_context_state():
     payload = MessageToDict(part.data)
     assert payload["missing_inputs"][0]["name"] == "temperature_c"
 
-    saved = agent.load_context_state("ctx-1")
-    assert saved["resolved"]["material_id"] == "SS316"
-    assert saved["pending"] == ["temperature_c"]
+
+def test_thermal_agent_reads_inputs_from_params():
+    # Operating conditions come nested under context from the model, or top level
+    # from an INPUT_REQUIRED answer, which wins.
+    resolve = ThermalAnalysisAgent._resolve_inputs
+
+    assert resolve({"material_id": "SS316", "context": {"temperature_c": 300}})["temperature_c"] == 300
+    assert resolve({"material_id": "SS316", "temperature_c": 450, "context": {"temperature_c": 300}})[
+        "temperature_c"
+    ] == 450
+    assert resolve({"material_id": "SS316", "context": "not a dict"})["temperature_c"] is None
+
+
+class _FakeLLM:
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, traceback):
+        return None
+
+    async def medium(self, prompt, **kwargs):
+        return SimpleNamespace(
+            text=json.dumps({"risk_level": "low"}), provider_model="test-model", model_alias="medium"
+        )
+
+
+def test_thermal_agent_resume_needs_no_saved_state():
+    # On resume the client-agent re-sends every argument plus the answer, so the
+    # agent proceeds past the temperature prompt from params alone.
+    agent = ThermalAnalysisAgent(agent_name="Thermal Analysis Agent")
+    agent.load_context_state = MagicMock(side_effect=AssertionError("no saved state needed"))
+    agent.llm_client = MagicMock(return_value=_FakeLLM())
+    agent.send_status_update = AsyncMock()
+    agent.send_json_artifact = AsyncMock()
+    context = MagicMock(spec=RequestContext)
+    context.task_id = "task-1"
+    context.context_id = "ctx-1"
+    queue = AsyncMock(spec=EventQueue)
+
+    result = asyncio.run(agent._execute({"material_id": "SS316", "temperature_c": 450}, context, queue))
+
+    assert "error" not in result
+    assert (result["analysis_type"], result["material_id"]) == ("thermal", "SS316")
+    assert result["operating_temperature_c"] == 450
+    assert not any(
+        call.args[0].status.state == TaskState.TASK_STATE_INPUT_REQUIRED
+        for call in queue.enqueue_event.call_args_list
+        if isinstance(call.args[0], TaskStatusUpdateEvent)
+    )

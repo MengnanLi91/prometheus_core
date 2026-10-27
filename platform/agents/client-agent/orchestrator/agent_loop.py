@@ -435,10 +435,12 @@ def inject_tool_call(
         }
     )
     state["pending_note"] = note
+    # The arguments are the user's form answers, so credit them to the user.
     call = _new_call(
         {"id": call_id, "name": spec.name, "arguments": arguments, "arguments_error": None},
         catalog,
         state,
+        source="user",
     )
     if workflow_version:
         call["workflow_version"] = workflow_version
@@ -634,6 +636,8 @@ def _new_call(
     tool_call: Dict[str, Any],
     catalog: Mapping[str, ToolSpec],
     state: Dict[str, Any],
+    *,
+    source: str = "model",
 ) -> Dict[str, Any]:
     name = str(tool_call.get("name") or "")
     spec = catalog.get(name)
@@ -666,6 +670,7 @@ def _new_call(
     if problem:
         _finish(call, {"status": "failed", "error": problem})
         return call
+    call["input_sources"] = {key: source for key in call["arguments"]}
     _refresh_status(call, spec)
     return call
 
@@ -723,6 +728,7 @@ def apply_answers(
                     set_nested_value(call["arguments"], path, value)
                 else:
                     call["arguments"][path] = value
+                call.setdefault("input_sources", {})[path] = "user"
             problem = _validation_problem(spec, call["arguments"], state)
             if problem:
                 _finish(call, {"status": "failed", "error": problem})
@@ -746,22 +752,12 @@ def apply_answers(
                 if value is None:
                     continue
                 provided[name] = value
-                if not item.get("sensitive"):
-                    context[name] = value
-                    call.setdefault("recorded_inputs", {})[name] = value
+                call.setdefault("input_sources", {})[name] = "user"
+                context[name] = value
+                call["arguments"][name] = value
             if provided:
-                call["provided_inputs"] = provided
+                call["pending_answers"] = provided
                 call["status"] = "resume"
-
-
-def sensitive_fields(state: Dict[str, Any]) -> set[str]:
-    """Names of the inputs pending calls asked for as sensitive; never persisted."""
-    return {
-        str(item.get("name") or "")
-        for call in state.get("pending_calls") or []
-        for item in call.get("missing_inputs") or []
-        if item.get("sensitive")
-    }
 
 
 def apply_reply(
@@ -907,6 +903,8 @@ def _blocked_record(skill_id: str, item: Mapping[str, Any], missing: List[Dict[s
 
 def _invocation_params(call: Dict[str, Any], state: Dict[str, Any]) -> Dict[str, Any]:
     params = copy.deepcopy(call["arguments"])
+    if call.get("input_sources"):
+        params["_input_sources"] = dict(call["input_sources"])
     artifacts = summarize_artifacts_for_context((state.get("context") or {}).get("artifacts"))
     if artifacts:
         params["artifacts"] = artifacts
@@ -917,7 +915,6 @@ async def _settle_skill_item(
     call: Dict[str, Any],
     item: Dict[str, Any],
     state: Dict[str, Any],
-    params: Dict[str, Any],
 ) -> None:
     """Turn one invoke_skill outcome into a finished call or an INPUT_REQUIRED pause."""
     skill_id = call["target"]
@@ -928,14 +925,15 @@ async def _settle_skill_item(
         resolved, unresolved = _resolve_from_context(missing, call["arguments"], state.get("context") or {})
         if resolved and not call.get("auto_resumed"):
             call["auto_resumed"] = True
-            call.setdefault("recorded_inputs", {}).update(resolved)
+            call["arguments"].update(resolved)
+            call.setdefault("input_sources", {}).update({name: "context" for name in resolved})
             resumed = await invoke_skill(
                 skill_id,
-                {**params, "provided_inputs": resolved, **_a2a_resume_fields(_blocked_record(skill_id, item, [], None))},
+                {**_invocation_params(call, state), **_a2a_resume_fields(_blocked_record(skill_id, item, [], None))},
                 conversation_id,
                 emit_status=False,
             )
-            await _settle_skill_item(call, resumed, state, params)
+            await _settle_skill_item(call, resumed, state)
             return
         hint = payload.get("hint") if isinstance(payload, dict) else None
         call.update(_blocked_record(skill_id, item, unresolved or missing, hint))
@@ -946,13 +944,17 @@ async def _settle_skill_item(
         _finish(call, {"status": "failed", "error": str(item["error"])})
         return
     result = item.get("result")
-    # Inputs given after the call was made (form answers, values resolved from
-    # context) belong to the invocation's record, and the model must see them.
-    recorded = call.pop("recorded_inputs", {})
-    _record_result(state, _result_key(state, skill_id), {**call["arguments"], **recorded}, result)
+    _record_result(state, _result_key(state, skill_id), call["arguments"], result)
     payload = _compact_result(result, "succeeded")
-    if recorded:
-        payload["provided_inputs"] = recorded
+    # Inputs supplied after the call was made are part of what ran; the model
+    # must see them and who supplied each, or it credits the skill with the
+    # user's choice. Its own arguments are already in the tool call.
+    sources = call.get("input_sources") or {}
+    supplied = {name: call["arguments"][name] for name, source in sources.items() if source != "model"}
+    if supplied:
+        encoded = json.dumps(supplied, default=str)
+        payload["inputs"] = copy.deepcopy(supplied) if len(encoded) <= SUMMARY_CHARS else _truncate(encoded, SUMMARY_CHARS)
+        payload["input_sources"] = dict(sources)
     _finish(call, payload)
 
 
@@ -960,14 +962,16 @@ async def _run_skill(call: Dict[str, Any], state: Dict[str, Any]) -> None:
     params = _invocation_params(call, state)
     conversation_id = str(state.get("conversation_id") or "")
     if call["status"] == "resume":
+        # The answers are already in the arguments; the resume only needs the task ids.
+        call.pop("pending_answers", None)
         item = await invoke_skill(
             call["target"],
-            {**params, "provided_inputs": call.pop("provided_inputs", {}), **_a2a_resume_fields(call)},
+            {**params, **_a2a_resume_fields(call)},
             conversation_id,
         )
     else:
         item = await invoke_skill(call["target"], params, conversation_id)
-    await _settle_skill_item(call, item, state, params)
+    await _settle_skill_item(call, item, state)
 
 
 async def _run_workflow(call: Dict[str, Any], state: Dict[str, Any]) -> None:
@@ -982,17 +986,24 @@ async def _run_workflow(call: Dict[str, Any], state: Dict[str, Any]) -> None:
     step_keys = call.setdefault("step_result_keys", {})
     if call["status"] == "resume":
         # Finish the blocked specialist tasks first, then continue the template
-        # from where it stopped. Non-sensitive answers also reach later steps.
-        provided = call.pop("provided_inputs", {})
-        sensitive = {str(item.get("name") or "") for item in call.get("missing_inputs") or [] if item.get("sensitive")}
+        # from where it stopped. The answers also reach later steps.
+        provided = call.pop("pending_answers", {})
         still_blocked: List[Dict[str, Any]] = []
         for record in call.get("blocked_steps") or []:
             step_id = str(record.get("step_id") or record["skill_id"])
             names = {str(item.get("name") or "") for item in record.get("missing_inputs") or []}
             step_inputs = {name: value for name, value in provided.items() if name in names}
+            # The call's arguments now hold every answer; a step gets only its own.
+            step_params = {key: value for key, value in _invocation_params(call, state).items() if key not in provided}
+            sources = {key: src for key, src in step_params.pop("_input_sources", {}).items() if key not in provided}
             resumed = await invoke_skill(
                 record["skill_id"],
-                {**_invocation_params(call, state), "provided_inputs": step_inputs, **_a2a_resume_fields(record)},
+                {
+                    **step_params,
+                    **step_inputs,
+                    "_input_sources": {**sources, **{name: "user" for name in step_inputs}},
+                    **_a2a_resume_fields(record),
+                },
                 conversation_id,
             )
             if resumed.get("input_required"):
@@ -1009,11 +1020,9 @@ async def _run_workflow(call: Dict[str, Any], state: Dict[str, Any]) -> None:
             elif "error" in resumed:
                 completed[step_id] = {"status": "failed", "error": str(resumed["error"])}
             else:
-                recorded = {name: value for name, value in step_inputs.items() if name not in sensitive}
-                params = {**(record.get("params") or {}), **recorded}
+                params = {**(record.get("params") or {}), **step_inputs}
                 completed[step_id] = {"status": "succeeded", "result": resumed.get("result"), "params": params}
                 _record_step(state, step_keys, step_id, record["skill_id"], params, resumed.get("result"))
-        call["arguments"].update({name: value for name, value in provided.items() if name not in sensitive})
         if still_blocked:
             _pause_workflow(call, still_blocked)
             return
@@ -1186,7 +1195,6 @@ def _form_questions(state: Dict[str, Any], catalog: Mapping[str, ToolSpec]) -> L
                         "type": "select" if kind == "enum" or item.get("options") else _question_type({"type": kind}),
                         "options": item.get("options"),
                         "required": bool(item.get("required", True)),
-                        "sensitive": bool(item.get("sensitive")),
                         "value_type": kind,
                     }
                 )

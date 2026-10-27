@@ -23,6 +23,53 @@
           }
         }
       },
+      "/a2a/{agent_name}": {
+        "get": {
+          "parameters": [
+            {
+              "in": "path",
+              "name": "agent_name",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "post": {
+          "parameters": [
+            {
+              "in": "path",
+              "name": "agent_name",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              }
+            }
+          }
+        }
+      },
       "/api/admin/oidc-providers": {
         "get": {
           "responses": {
@@ -640,6 +687,31 @@
           }
         }
       },
+      "/api/conversations/{conversation_id}/tasks": {
+        "get": {
+          "parameters": [
+            {
+              "in": "path",
+              "name": "conversation_id",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ConversationTasksResponse"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/api/events": {
         "get": {
           "responses": {
@@ -751,6 +823,90 @@
       },
       "/healthz": {
         "get": {
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "additionalProperties": {
+                      "type": "string"
+                    },
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/readyz": {
+        "get": {
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/agents": {
+        "get": {
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "items": {
+                      "additionalProperties": true,
+                      "type": "object"
+                    },
+                    "type": "array"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "post": {
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentRegistration"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/agents/{agent_id}": {
+        "delete": {
+          "parameters": [
+            {
+              "in": "path",
+              "name": "agent_id",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
           "responses": {
             "200": {
               "content": {
@@ -914,6 +1070,29 @@
             ]
           }
         },
+        "type": "object"
+      },
+      "AgentRegistration": {
+        "properties": {
+          "agent_card_params": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "agent_name": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "static_headers": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "agent_name",
+          "agent_card_params"
+        ],
         "type": "object"
       },
       "ArtifactMeta": {
@@ -1481,6 +1660,27 @@
         ],
         "type": "object"
       },
+      "ConversationTasksResponse": {
+        "properties": {
+          "available": {
+            "default": false,
+            "type": "boolean"
+          },
+          "conversation_id": {
+            "type": "string"
+          },
+          "tasks": {
+            "items": {
+              "$ref": "#/components/schemas/TaskNodeOut"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "conversation_id"
+        ],
+        "type": "object"
+      },
       "CreateSessionRequest": {
         "properties": {
           "bind_seq": {
@@ -1908,6 +2108,161 @@
         ],
         "type": "object"
       },
+      "TaskNodeOut": {
+        "properties": {
+          "agent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "children": {
+            "items": {
+              "$ref": "#/components/schemas/TaskNodeOut"
+            },
+            "type": "array"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "is_background": {
+            "default": false,
+            "type": "boolean"
+          },
+          "last_status_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "own_state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "parent_task_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "progress": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "result_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "skill": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "state": {
+            "type": "string"
+          },
+          "task_id": {
+            "type": "string"
+          },
+          "title": {
+            "default": "",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "waiting_on": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "task_id",
+          "state"
+        ],
+        "type": "object"
+      },
       "UploadDescriptor": {
         "properties": {
           "mime_type": {
@@ -1966,6 +2321,40 @@
       },
       "path": "/.well-known/jwks.json",
       "response_model": "dict[str, list[dict[str, Any]]]",
+      "status_code": null
+    },
+    {
+      "methods": [
+        "GET"
+      ],
+      "params": {
+        "body": [],
+        "cookie": [],
+        "header": [],
+        "path": [
+          "agent_name"
+        ],
+        "query": []
+      },
+      "path": "/a2a/{agent_name}",
+      "response_model": "Dict[str, Any]",
+      "status_code": null
+    },
+    {
+      "methods": [
+        "POST"
+      ],
+      "params": {
+        "body": [],
+        "cookie": [],
+        "header": [],
+        "path": [
+          "agent_name"
+        ],
+        "query": []
+      },
+      "path": "/a2a/{agent_name}",
+      "response_model": "Any",
       "status_code": null
     },
     {
@@ -2472,6 +2861,25 @@
           "prometheus_session"
         ],
         "header": [],
+        "path": [
+          "conversation_id"
+        ],
+        "query": []
+      },
+      "path": "/api/conversations/{conversation_id}/tasks",
+      "response_model": "ConversationTasksResponse",
+      "status_code": null
+    },
+    {
+      "methods": [
+        "GET"
+      ],
+      "params": {
+        "body": [],
+        "cookie": [
+          "prometheus_session"
+        ],
+        "header": [],
         "path": [],
         "query": []
       },
@@ -2577,8 +2985,72 @@
       "path": "/openapi.json"
     },
     {
+      "methods": [
+        "GET"
+      ],
+      "params": {
+        "body": [],
+        "cookie": [],
+        "header": [],
+        "path": [],
+        "query": []
+      },
+      "path": "/readyz",
+      "response_model": null,
+      "status_code": null
+    },
+    {
       "kind": "Route",
       "path": "/redoc"
+    },
+    {
+      "methods": [
+        "GET"
+      ],
+      "params": {
+        "body": [],
+        "cookie": [],
+        "header": [],
+        "path": [],
+        "query": []
+      },
+      "path": "/v1/agents",
+      "response_model": "List[Dict[str, Any]]",
+      "status_code": null
+    },
+    {
+      "methods": [
+        "POST"
+      ],
+      "params": {
+        "body": [
+          "body"
+        ],
+        "cookie": [],
+        "header": [],
+        "path": [],
+        "query": []
+      },
+      "path": "/v1/agents",
+      "response_model": "Dict[str, Any]",
+      "status_code": null
+    },
+    {
+      "methods": [
+        "DELETE"
+      ],
+      "params": {
+        "body": [],
+        "cookie": [],
+        "header": [],
+        "path": [
+          "agent_id"
+        ],
+        "query": []
+      },
+      "path": "/v1/agents/{agent_id}",
+      "response_model": "Dict[str, str]",
+      "status_code": null
     }
   ]
 }

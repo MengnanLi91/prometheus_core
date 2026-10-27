@@ -419,3 +419,62 @@ Soft delete: sets `conv:meta:{id}.hidden`, which excludes the conversation from
 `recent`. `GET /api/conversations/{id}` and `/resume` then answer `404`, so a tab
 that still remembers the id starts a clean chat instead of reopening it. The
 underlying `conversation:{id}` document (and its artifacts) are left untouched.
+
+### `GET /api/conversations/{id}/tasks` → `ConversationTasksResponse`
+
+The conversation's background-task tree: the client-agent's Task Graph
+(`tasks:graph|roots|node:{id}` in Valkey), as JSON. It's the structured counterpart of the
+`/tasks` slash command. Each root is one chat turn that dispatched a specialist,
+and its `children` are those skill dispatches (nested further for nested dispatch).
+Roots are newest first. Running and finished tasks are both returned until their
+nodes expire (24 h by default); filter on `state` / `is_background` client-side.
+
+`state` is the effective A2A task state after children percolate up
+(`submitted`, `working`, `input-required`, `completed`, `failed`, `canceled`,
+`rejected`); `own_state` is the node's own. `is_background` marks a turn the
+client-agent detached (and the skill that asked for it). `skill` is the
+dispatched skill id and identifies what a child node runs. `agent` is reserved for
+the serving agent; the client-agent does not record it yet, so it is `null`.
+`available: false` with an empty `tasks` means Valkey is unreachable (still a
+`200`, matching `recent`). A soft-deleted or unowned conversation answers `404`.
+
+```json
+{
+  "available": true,
+  "conversation_id": "c-8f2a…",
+  "tasks": [
+    {
+      "task_id": "t_3c1d…",
+      "parent_task_id": null,
+      "agent": null,
+      "skill": null,
+      "title": "Predict the corrosion rate of SS316 in seawater",
+      "state": "working",
+      "own_state": "working",
+      "is_background": false,
+      "waiting_on": ["t_9e4b…"],
+      "created_at": "2026-09-01T12:00:00+00:00",
+      "started_at": "2026-09-01T12:00:00+00:00",
+      "updated_at": "2026-09-01T12:00:45+00:00",
+      "finished_at": null,
+      "last_status_message": "waiting on predict_corrosion_rate — Fitting rate model…",
+      "progress": null,
+      "result_ref": null,
+      "error": null,
+      "children": [
+        {
+          "task_id": "t_9e4b…",
+          "parent_task_id": "t_3c1d…",
+          "agent": null,
+          "skill": "predict_corrosion_rate",
+          "title": "predict_corrosion_rate",
+          "state": "working",
+          "…": "…",
+          "last_status_message": "Fitting rate model…",
+          "children": []
+        }
+      ]
+    }
+  ]
+}
+```

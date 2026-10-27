@@ -475,6 +475,54 @@ class ConversationDetailResponse(BaseModel):
     artifacts: list[ArtifactMeta] = Field(default_factory=list)
 
 
+class TaskNodeOut(BaseModel):
+    """One Task Graph node, as returned by ``GET /api/conversations/{id}/tasks``.
+
+    Mirrors the client-agent's ``TaskNode`` (agents/client-agent/task_graph.py), minus
+    ``conversation_id`` (the request's scope) and ``child_task_ids`` (replaced by the
+    nested ``children``). A root is one chat turn; its children are the specialist
+    skill dispatches it made. ``state`` is the effective state after the children
+    percolate up (an A2A ``TaskState`` string: ``submitted``, ``working``,
+    ``input-required``, ``completed``, ``failed``, ``canceled``, ``rejected``);
+    ``own_state`` is the node's own. ``is_background`` marks a turn the client-agent
+    detached, and the skill that asked for it. Timestamps are ISO-8601 strings.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    task_id: str
+    parent_task_id: Optional[str] = None
+    agent: Optional[str] = None
+    skill: Optional[str] = None
+    title: str = ""
+    state: str
+    own_state: Optional[str] = None
+    is_background: bool = False
+    waiting_on: list[str] = Field(default_factory=list)
+    created_at: Optional[str] = None
+    started_at: Optional[str] = None
+    updated_at: Optional[str] = None
+    finished_at: Optional[str] = None
+    last_status_message: Optional[str] = None
+    progress: Optional[float] = None
+    result_ref: Optional[str] = None
+    error: Optional[str] = None
+    children: list[TaskNodeOut] = Field(default_factory=list)
+
+
+class ConversationTasksResponse(BaseModel):
+    """Returned by ``GET /api/conversations/{id}/tasks``: the conversation's Task
+    Graph as a tree of root turns, newest first. Includes finished tasks until their
+    nodes expire (24 h by default); filter on ``state`` / ``is_background`` client-side.
+
+    ``available`` is ``False`` when Valkey is unreachable, matching ``recent``.
+    """
+
+    available: bool = False
+    conversation_id: str
+    tasks: list[TaskNodeOut] = Field(default_factory=list)
+
+
 class ConversationRenameRequest(BaseModel):
     """Body for ``PATCH /api/conversations/{id}``."""
 
