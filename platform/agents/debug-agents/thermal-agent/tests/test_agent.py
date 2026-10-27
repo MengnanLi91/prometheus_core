@@ -16,7 +16,9 @@ from __future__ import annotations
 
 import asyncio
 import importlib.util
+import json
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 from a2a.server.agent_execution.context import RequestContext
@@ -67,11 +69,25 @@ def test_thermal_agent_reads_inputs_from_params():
     assert resolve({"material_id": "SS316", "context": "not a dict"})["temperature_c"] is None
 
 
+class _FakeLLM:
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, traceback):
+        return None
+
+    async def medium(self, prompt, **kwargs):
+        return SimpleNamespace(
+            text=json.dumps({"risk_level": "low"}), provider_model="test-model", model_alias="medium"
+        )
+
+
 def test_thermal_agent_resume_needs_no_saved_state():
     # On resume the client-agent re-sends every argument plus the answer, so the
     # agent proceeds past the temperature prompt from params alone.
     agent = ThermalAnalysisAgent(agent_name="Thermal Analysis Agent")
     agent.load_context_state = MagicMock(side_effect=AssertionError("no saved state needed"))
+    agent.llm_client = MagicMock(return_value=_FakeLLM())
     agent.send_status_update = AsyncMock()
     agent.send_json_artifact = AsyncMock()
     context = MagicMock(spec=RequestContext)
@@ -81,7 +97,9 @@ def test_thermal_agent_resume_needs_no_saved_state():
 
     result = asyncio.run(agent._execute({"material_id": "SS316", "temperature_c": 450}, context, queue))
 
-    assert result.get("status") != "input_required"
+    assert "error" not in result
+    assert (result["analysis_type"], result["material_id"]) == ("thermal", "SS316")
+    assert result["operating_temperature_c"] == 450
     assert not any(
         call.args[0].status.state == TaskState.TASK_STATE_INPUT_REQUIRED
         for call in queue.enqueue_event.call_args_list
