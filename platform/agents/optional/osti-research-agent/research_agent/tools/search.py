@@ -71,8 +71,11 @@ def build_search_tools(ctx: RunContext) -> List[BaseTool]:
                     "error": f"skipped: {reason}",
                     "search_budget_exhausted": exhausted,
                     "instruction": (
-                        "Do not call this search tool again; analyze existing "
-                        "results and synthesize."
+                        "This search tool is used up for this run. Do not call it "
+                        "again: download and analyze the most promising unread "
+                        "results you already have, or use another search tool. "
+                        "Emit the final JSON only when no promising result is "
+                        "left or the paper or time budget is reached."
                         if exhausted
                         else "Use the earlier results instead of repeating this query."
                     ),

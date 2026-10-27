@@ -119,6 +119,9 @@ def test_search_scholarly_deduplicates_and_caps_queries(monkeypatch):
     assert calls == ["steel creep", "steel deformation"]
     assert "duplicate scholarly query" in duplicate["error"]
     assert "search limit reached (2)" in exhausted["error"]
+    # Running out of searches must not tell the agent to finish the run.
+    assert "synthesize" not in exhausted["instruction"]
+    assert "analyze the most promising unread" in exhausted["instruction"]
 
 
 # --- search_web -----------------------------------------------------------

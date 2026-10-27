@@ -84,6 +84,20 @@ def _parse_summary(parsed: ParsedPaper, safe_id: str) -> dict:
     }
 
 
+def _download_failed(source_id: str, ctx: RunContext) -> dict:
+    # Publishers often refuse scripted downloads (403). A failed download uses
+    # no paper budget, so say so: the run should move on, not finish.
+    return {
+        "ok": False,
+        "source_id": source_id,
+        "error": ctx.download_failures[source_id],
+        "instruction": (
+            "This paper did not use up the paper budget; try the next most "
+            "promising search result instead."
+        ),
+    }
+
+
 def build_osti_tools(ctx: RunContext) -> List[BaseTool]:
     """Build the search/download/parse tools bound to one run's context."""
 
@@ -101,8 +115,11 @@ def build_osti_tools(ctx: RunContext) -> List[BaseTool]:
                     "error": f"skipped: {reason}",
                     "search_budget_exhausted": exhausted,
                     "instruction": (
-                        "Do not call this search tool again; analyze existing "
-                        "results and synthesize."
+                        "This search tool is used up for this run. Do not call it "
+                        "again: download and analyze the most promising unread "
+                        "results you already have, or use another search tool. "
+                        "Emit the final JSON only when no promising result is "
+                        "left or the paper or time budget is reached."
                         if exhausted
                         else "Use the earlier results instead of repeating this query."
                     ),
@@ -151,13 +168,7 @@ def build_osti_tools(ctx: RunContext) -> List[BaseTool]:
                 }
             )
         if source_id in ctx.download_failures:
-            return json.dumps(
-                {
-                    "ok": False,
-                    "source_id": source_id,
-                    "error": ctx.download_failures[source_id],
-                }
-            )
+            return json.dumps(_download_failed(source_id, ctx))
 
         reason = ctx.budget_reason()
         if reason:
@@ -206,15 +217,8 @@ def build_osti_tools(ctx: RunContext) -> List[BaseTool]:
             )
 
         if not pdf_path:
-            error = "PDF not available for download"
-            ctx.download_failures[source_id] = error
-            return json.dumps(
-                {
-                    "ok": False,
-                    "source_id": source_id,
-                    "error": error,
-                }
-            )
+            ctx.download_failures[source_id] = "PDF not available for download"
+            return json.dumps(_download_failed(source_id, ctx))
         ctx.pdf_paths[source_id] = pdf_path
         return json.dumps({"ok": True, "source_id": source_id, "pdf_path": pdf_path})
 

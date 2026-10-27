@@ -128,6 +128,9 @@ def test_search_osti_deduplicates_and_caps_queries(monkeypatch):
     ]
     assert "duplicate OSTI query" in duplicate["error"]
     assert "search limit reached (3)" in exhausted["error"]
+    # Running out of searches must not tell the agent to finish the run.
+    assert "synthesize" not in exhausted["instruction"]
+    assert "analyze the most promising unread" in exhausted["instruction"]
 
 
 # --- download_paper -------------------------------------------------------
@@ -184,6 +187,7 @@ def test_download_paper_reports_missing_pdf(monkeypatch):
     assert first == second
     assert first["ok"] is False
     assert "not available" in first["error"]
+    assert "did not use up the paper budget" in first["instruction"]
     assert calls == 1
 
 
