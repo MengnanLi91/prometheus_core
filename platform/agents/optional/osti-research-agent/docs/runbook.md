@@ -66,6 +66,7 @@ facts and cached answers.
 | Key | Contents | TTL |
 |-----|----------|-----|
 | `osti:paper:pdf_bytes:{osti_id}` | raw downloaded PDF | 30 days |
+| `osti:paper:pdf_bytes:url:{sha256(url)}` | raw PDF from a scholarly/web URL | 30 days |
 | `osti:paper:text:v2:{osti_id}` | extracted text (legacy pipeline) | 30 days |
 | `osti:paper:artifacts:v1:{source_id}` | zipped artifact dir (docling) | 30 days |
 | `osti:paper:figjson:v1:{source_id}:{idx}` | per-figure VLM JSON | 30 days |

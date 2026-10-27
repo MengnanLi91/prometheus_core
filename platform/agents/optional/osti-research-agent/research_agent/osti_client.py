@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -34,6 +35,14 @@ requests.packages.urllib3.disable_warnings()
 
 _USER_AGENT = "osti-research-agent/1.0 (+https://www.osti.gov)"
 _DEFAULT_MAX_PDF_BYTES = 50 * 1024 * 1024  # 50 MB
+_PDF_CACHE_TTL_S = 30 * 24 * 3600
+
+
+def url_cache_key(url: str) -> str:
+    """PdfCache key for a direct-URL PDF. Keyed by the URL, not the source id,
+    so two sources can never share bytes; the ``url:`` prefix keeps it apart
+    from the OSTI ids the same cache is keyed by."""
+    return "url:" + hashlib.sha256(url.encode("utf-8")).hexdigest()
 
 
 def download_pdf_from_url(
@@ -42,6 +51,7 @@ def download_pdf_from_url(
     *,
     max_bytes: int = _DEFAULT_MAX_PDF_BYTES,
     timeout: int = 120,
+    cache: Optional[PdfCache] = None,
 ) -> Optional[str]:
     """Fetch an arbitrary PDF URL (e.g. an open-access link from scholarly or
     web search) to ``dest_path``. Returns the path, or None if the response
@@ -49,7 +59,23 @@ def download_pdf_from_url(
 
     A response counts as a PDF when its Content-Type is ``application/pdf`` or
     its bytes begin with the ``%PDF`` magic - guarding against HTML error pages
-    served with a 200. Redirects are followed; a sane User-Agent is sent."""
+    served with a 200. Redirects are followed; a sane User-Agent is sent.
+
+    With ``cache``, a PDF fetched before is served from it, and a fetched PDF
+    is stored in it for 30 days."""
+    key = url_cache_key(url)
+    if cache is not None:
+        try:
+            cached = cache.get_pdf(key)
+        except Exception as e:
+            logger.warning(f"PDF cache read failed for {url}: {e}")
+            cached = None
+        if cached and len(cached) <= max_bytes:
+            if _write_pdf(dest_path, cached):
+                logger.info(f"PDF for {url} served from cache ({len(cached)} bytes)")
+                return dest_path
+            return None
+
     try:
         session = requests.Session()
         resp = session.get(
@@ -84,13 +110,24 @@ def download_pdf_from_url(
         logger.warning(f"URL is not a PDF (Content-Type={content_type!r}) at {url}")
         return None
 
+    if not _write_pdf(dest_path, content):
+        return None
+    if cache is not None:
+        try:
+            cache.put_pdf(key, content, ttl_s=_PDF_CACHE_TTL_S)
+        except Exception as e:
+            logger.warning(f"PDF cache write failed for {url}: {e}")
+    return dest_path
+
+
+def _write_pdf(dest_path: str, content: bytes) -> bool:
     try:
         with open(dest_path, "wb") as f:
             f.write(content)
     except OSError as e:
         logger.error(f"Could not write PDF to {dest_path}: {e}")
-        return None
-    return dest_path
+        return False
+    return True
 
 
 def search_osti(search_query: str, max_results: int = 15) -> List[Dict[str, Any]]:

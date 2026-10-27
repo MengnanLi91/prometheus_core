@@ -114,3 +114,73 @@ def test_request_exception_returns_none(tmp_path):
     with _patch_session(session):
         out = osti_client.download_pdf_from_url("https://x/p.pdf", dest)
     assert out is None
+
+
+class _FakePdfCache:
+    def __init__(self, blobs=None, fail=False):
+        self.blobs = dict(blobs or {})
+        self.fail = fail
+        self.puts = []
+
+    def get_pdf(self, key):
+        if self.fail:
+            raise ConnectionError("redis down")
+        return self.blobs.get(key)
+
+    def put_pdf(self, key, data, ttl_s):
+        if self.fail:
+            raise ConnectionError("redis down")
+        self.puts.append((key, ttl_s))
+        self.blobs[key] = data
+
+
+def test_fetched_pdf_is_cached_by_url(tmp_path):
+    cache = _FakePdfCache()
+    session = _session(headers={"Content-Type": "application/pdf"}, content=_PDF_BYTES)
+    with _patch_session(session):
+        out = osti_client.download_pdf_from_url(
+            "https://x/p.pdf", str(tmp_path / "p.pdf"), cache=cache
+        )
+
+    key = osti_client.url_cache_key("https://x/p.pdf")
+    assert out and cache.blobs[key] == _PDF_BYTES
+    assert key.startswith("url:") and cache.puts[0][1] == 30 * 24 * 3600
+
+
+def test_cached_pdf_is_served_without_a_request(tmp_path):
+    key = osti_client.url_cache_key("https://x/p.pdf")
+    cache = _FakePdfCache({key: _PDF_BYTES})
+    dest = tmp_path / "p.pdf"
+    session = _session(raises=AssertionError("must not fetch"))
+    with _patch_session(session):
+        out = osti_client.download_pdf_from_url("https://x/p.pdf", str(dest), cache=cache)
+
+    assert out == str(dest) and dest.read_bytes() == _PDF_BYTES
+    session.get.assert_not_called()
+
+
+def test_different_urls_never_share_a_cache_entry():
+    assert osti_client.url_cache_key("https://a/p.pdf") != osti_client.url_cache_key(
+        "https://b/p.pdf"
+    )
+
+
+def test_rejected_download_is_not_cached(tmp_path):
+    cache = _FakePdfCache()
+    session = _session(headers={"Content-Type": "text/html"}, content=b"<html>")
+    with _patch_session(session):
+        out = osti_client.download_pdf_from_url(
+            "https://x/notpdf", str(tmp_path / "p.pdf"), cache=cache
+        )
+
+    assert out is None and cache.blobs == {}
+
+
+def test_cache_outage_still_downloads(tmp_path):
+    session = _session(headers={"Content-Type": "application/pdf"}, content=_PDF_BYTES)
+    with _patch_session(session):
+        out = osti_client.download_pdf_from_url(
+            "https://x/p.pdf", str(tmp_path / "p.pdf"), cache=_FakePdfCache(fail=True)
+        )
+
+    assert out is not None

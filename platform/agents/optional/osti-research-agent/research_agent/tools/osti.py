@@ -197,6 +197,7 @@ def build_osti_tools(ctx: RunContext) -> List[BaseTool]:
                 direct_url,
                 dest,
                 max_bytes=ctx.config.max_pdf_mb * 1024 * 1024,
+                cache=ctx.pdf_cache,
             )
         else:
             progress.emit(f"Downloading OSTI #{source_id}")

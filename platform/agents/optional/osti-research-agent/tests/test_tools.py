@@ -222,7 +222,8 @@ def test_download_paper_rejects_unreturned_direct_url(monkeypatch):
 def test_download_paper_writes_direct_url_into_run_workdir(monkeypatch, tmp_path):
     dests = []
 
-    def fake_download(url, dest, *, max_bytes):
+    def fake_download(url, dest, *, max_bytes, cache=None):
+        assert cache is ctx.pdf_cache
         dests.append(dest)
         return dest
 
