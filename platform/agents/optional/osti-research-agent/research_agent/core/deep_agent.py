@@ -35,8 +35,6 @@ from research_agent.core.prompts import (
 from research_agent.tools import RunContext, build_tools, progress
 
 PAPER_ANALYZER_NAME = "paper-analyzer"
-VERIFIER_MODEL_CALL_LIMIT = 6
-VERIFIER_TOOL_CALL_LIMIT = 8
 
 logger = logging.getLogger(__name__)
 _REGISTERED_PROFILE_KEYS: set[str] = set()
@@ -159,16 +157,16 @@ def build_paper_verifier(config: AgentConfig, backend) -> Any:
         backend=backend,
         permissions=_read_only_paper_permissions(),
         system_prompt=render_verifier_prompt(
-            VERIFIER_MODEL_CALL_LIMIT,
-            VERIFIER_TOOL_CALL_LIMIT,
+            config.verifier_model_call_limit,
+            config.verifier_tool_call_limit,
         ),
         middleware=[
             ToolCallLimitMiddleware(
-                run_limit=VERIFIER_TOOL_CALL_LIMIT,
+                run_limit=config.verifier_tool_call_limit,
                 exit_behavior="continue",
             ),
             ModelCallLimitMiddleware(
-                run_limit=VERIFIER_MODEL_CALL_LIMIT,
+                run_limit=config.verifier_model_call_limit,
                 exit_behavior="end",
             ),
         ],
@@ -416,12 +414,14 @@ def _operational_failure(
     reason: str | None = None,
 ) -> dict:
     ctx.verification_errors.append(f"{source_id}: {kind}")
+    # Running out of model calls is an expected budget outcome, not a bug:
+    # one line, no traceback. Everything else keeps the traceback.
     logger.warning(
         "Paper analysis failed for source %s (%s): %s",
         source_id,
         kind,
         exc,
-        exc_info=True,
+        exc_info=not isinstance(exc, VerifierModelLimitError),
     )
     progress.emit(
         message,

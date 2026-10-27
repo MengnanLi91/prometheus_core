@@ -22,6 +22,8 @@ def test_from_env_reads_phase2_flags(monkeypatch):
     monkeypatch.setenv("ANALYZE_FIGURES", "true")
     monkeypatch.setenv("ANALYZER_MODEL_CALL_LIMIT", "6")
     monkeypatch.setenv("ANALYZER_TOOL_CALL_LIMIT", "10")
+    monkeypatch.setenv("VERIFIER_MODEL_CALL_LIMIT", "14")
+    monkeypatch.setenv("VERIFIER_TOOL_CALL_LIMIT", "20")
     monkeypatch.setenv("TOTAL_BUDGET_S", "600")
     monkeypatch.setenv("MAX_PAPERS_ANALYZED", "4")
     monkeypatch.setenv("MAX_PDF_MB", "40")
@@ -36,6 +38,8 @@ def test_from_env_reads_phase2_flags(monkeypatch):
     assert cfg.analyze_figures is True
     assert cfg.analyzer_model_call_limit == 6
     assert cfg.analyzer_tool_call_limit == 10
+    assert cfg.verifier_model_call_limit == 14
+    assert cfg.verifier_tool_call_limit == 20
     assert cfg.total_budget_s == 600
     assert cfg.max_papers_analyzed == 4
     assert cfg.max_pdf_mb == 40
@@ -51,6 +55,8 @@ def test_from_env_phase2_defaults(monkeypatch):
         "ANALYZE_FIGURES",
         "ANALYZER_MODEL_CALL_LIMIT",
         "ANALYZER_TOOL_CALL_LIMIT",
+        "VERIFIER_MODEL_CALL_LIMIT",
+        "VERIFIER_TOOL_CALL_LIMIT",
         "TOTAL_BUDGET_S",
         "MAX_PAPERS_ANALYZED",
         "MAX_PDF_MB",
@@ -69,6 +75,8 @@ def test_from_env_phase2_defaults(monkeypatch):
     assert cfg.analyze_figures is False
     assert cfg.analyzer_model_call_limit == 8
     assert cfg.analyzer_tool_call_limit == 12
+    assert cfg.verifier_model_call_limit == 10
+    assert cfg.verifier_tool_call_limit == 12
     assert cfg.total_budget_s == 900
     assert cfg.max_papers_analyzed == 5
     assert cfg.max_pdf_mb == 50

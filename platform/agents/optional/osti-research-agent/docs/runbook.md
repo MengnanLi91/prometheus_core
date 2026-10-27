@@ -28,6 +28,8 @@ defaults.
 | `MAX_PAPERS_ANALYZED` | `5` | download/parse budget; tools refuse past it |
 | `ANALYZER_MODEL_CALL_LIMIT` | `8` | maximum model calls per paper-analyzer run |
 | `ANALYZER_TOOL_CALL_LIMIT` | `12` | maximum filesystem-tool calls per paper-analyzer run |
+| `VERIFIER_MODEL_CALL_LIMIT` | `10` | maximum model calls per paper-verifier run; raise it if logs show "Verifier model-call limit reached" |
+| `VERIFIER_TOOL_CALL_LIMIT` | `12` | maximum filesystem-tool calls per paper-verifier run |
 | `WEB_SEARCH_PROVIDER` | `none` | `tavily` (needs `TAVILY_API_KEY`) or `searxng` (needs `SEARXNG_URL`); scholarly search is always on |
 | `TAVILY_API_KEY` | — | credential for Tavily web search |
 | `SEARXNG_URL` | — | base URL for a self-hosted SearXNG instance |

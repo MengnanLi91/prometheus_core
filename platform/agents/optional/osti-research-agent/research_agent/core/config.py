@@ -53,6 +53,10 @@ class AgentConfig(BaseModel):
     max_papers_analyzed: int = 5
     analyzer_model_call_limit: int = Field(default=8, ge=1)
     analyzer_tool_call_limit: int = Field(default=12, ge=1)
+    # The verifier must read paper.md and every artifact a finding cites, so
+    # a long paper read in chunks needs more turns than the analyzer's own.
+    verifier_model_call_limit: int = Field(default=10, ge=1)
+    verifier_tool_call_limit: int = Field(default=12, ge=1)
     # The legacy pipeline remains selectable as a rollback path.
     engine: Literal["pipeline", "deepagent"] = "deepagent"
 
@@ -120,6 +124,8 @@ class AgentConfig(BaseModel):
             engine=os.getenv("AGENT_ENGINE", "deepagent"),
             analyzer_model_call_limit=int(os.getenv("ANALYZER_MODEL_CALL_LIMIT", "8")),
             analyzer_tool_call_limit=int(os.getenv("ANALYZER_TOOL_CALL_LIMIT", "12")),
+            verifier_model_call_limit=int(os.getenv("VERIFIER_MODEL_CALL_LIMIT", "10")),
+            verifier_tool_call_limit=int(os.getenv("VERIFIER_TOOL_CALL_LIMIT", "12")),
             max_pdf_mb=int(os.getenv("MAX_PDF_MB", "50")),
             parser=os.getenv("PARSER", "artifacts"),
             docling_timeout_s=int(os.getenv("DOCLING_TIMEOUT_S", "240")),

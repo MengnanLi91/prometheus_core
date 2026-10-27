@@ -25,8 +25,6 @@ from pydantic import Field
 
 from research_agent.core.config import AgentConfig
 from research_agent.core.deep_agent import (
-    VERIFIER_MODEL_CALL_LIMIT,
-    VERIFIER_TOOL_CALL_LIMIT,
     VerificationResult,
     _analyze_paper,
     _parsed_paper_directory,
@@ -243,8 +241,37 @@ def test_verification_schema_avoids_union_and_enum_keywords():
     for forbidden in ("oneOf", "anyOf", "allOf", "enum", "const", "not"):
         assert f'"{forbidden}"' not in schema_text
     assert "confidence" not in VerificationResult.model_fields
-    assert VERIFIER_MODEL_CALL_LIMIT == 6
-    assert VERIFIER_TOOL_CALL_LIMIT == 8
+
+
+def test_paper_verifier_uses_the_configured_call_limits(monkeypatch, tmp_path):
+    captured = {}
+    monkeypatch.setattr(
+        "deepagents.create_deep_agent", lambda **kwargs: captured.update(kwargs)
+    )
+    monkeypatch.setattr(
+        "research_agent.core.deep_agent.chat_model", lambda config, role: object()
+    )
+    config = AgentConfig(
+        litellm_base_url="http://unused",
+        workdir=tmp_path,
+        verifier_model_call_limit=14,
+        verifier_tool_call_limit=20,
+    )
+
+    build_paper_verifier(config, backend=object())
+
+    middleware = captured["middleware"]
+    tool_limit = next(m for m in middleware if isinstance(m, ToolCallLimitMiddleware))
+    model_limit = next(m for m in middleware if isinstance(m, ModelCallLimitMiddleware))
+    assert (model_limit.run_limit, tool_limit.run_limit) == (14, 20)
+    prompt = " ".join(captured["system_prompt"].split())
+    assert "14" in prompt and "20" in prompt
+
+
+def test_verifier_limits_default_higher_than_before():
+    config = AgentConfig(litellm_base_url="http://unused")
+
+    assert (config.verifier_model_call_limit, config.verifier_tool_call_limit) == (10, 12)
 
 
 def test_paper_verifier_does_not_force_structured_output_tool(monkeypatch, tmp_path):
@@ -392,6 +419,41 @@ def test_verifier_model_limit_is_classified(tmp_path):
         "reason": "verifier model limit; do not retry source 123",
     }
     assert context.verification_errors == ["123: verifier_model_limit"]
+
+
+def test_verifier_model_limit_logs_one_line_without_a_traceback(tmp_path, caplog):
+    limit = {"messages": [AIMessage(content="Model call limits exceeded: run limit (6/6)")]}
+    with caplog.at_level("WARNING", logger="research_agent.core.deep_agent"):
+        asyncio.run(
+            _analyze_paper(
+                "123",
+                "Does titanium creep?",
+                analyzer=_FakeRunnable(result=_analysis_result()),
+                verifier=_FakeRunnable(result=limit),
+                ctx=_verification_context(tmp_path),
+            )
+        )
+
+    (record,) = [r for r in caplog.records if "Paper analysis failed" in r.getMessage()]
+    assert "verifier_model_limit" in record.getMessage()
+    assert not record.exc_info  # logged without a traceback
+
+
+def test_other_verifier_failures_keep_their_traceback(tmp_path, caplog):
+    with caplog.at_level("WARNING", logger="research_agent.core.deep_agent"):
+        asyncio.run(
+            _analyze_paper(
+                "123",
+                "Does titanium creep?",
+                analyzer=_FakeRunnable(result=_analysis_result()),
+                verifier=_FakeRunnable(error=RuntimeError("provider down")),
+                ctx=_verification_context(tmp_path),
+            )
+        )
+
+    (record,) = [r for r in caplog.records if "Paper analysis failed" in r.getMessage()]
+    assert "verifier_provider_failure" in record.getMessage()
+    assert record.exc_info is not None
 
 
 def test_json_fallback_still_requires_read_and_cited_paper_markdown(tmp_path):
