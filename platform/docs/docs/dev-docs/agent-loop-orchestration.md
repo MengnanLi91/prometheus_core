@@ -209,9 +209,7 @@ the model supplied an input, the tool result includes `inputs` (what ran) and
 `input_sources`, so the model credits each value correctly. The sources also travel to
 the agent as A2A message metadata `inputSources`.
 
-Sensitive answers reach only the resumed invocation: they are never written to the
-arguments, context, `inputs`, or transcript (their name still appears in
-`input_sources`). Agents read every input from `params` and the sources with
+Agents read every input from `params` and the sources with
 `PrometheusAgent.get_input_sources(context)`; there is no separate provided-inputs data part.
 
 Artifacts produced by a call are merged into `context.artifacts` right away, so the next

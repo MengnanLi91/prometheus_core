@@ -496,7 +496,6 @@ Never ask for credentials (API keys, tokens) with `INPUT_REQUIRED`: they would t
 | `options` | `List[str]` | no | Enum values — renders as a dropdown select |
 | `required` | `bool` | no | Default `True`. Set `False` for optional fields — form can be submitted without filling them |
 | `resolvable_from_context` | `bool` | no | Default `False`. If `True`, the orchestrator will try to auto-resolve from session context without asking the user |
-| `sensitive` | `bool` | no | Default `False`. Suppresses logging and display of the value |
 
 ### Type → form widget mapping
 
@@ -985,7 +984,6 @@ class MissingInput:
     type: str                             # "string" | "number" | "integer" | "boolean"
     options: Optional[List[str]] = None   # Renders as dropdown; works with any type
     resolvable_from_context: bool = False # Orchestrator tries to auto-resolve
-    sensitive: bool = False               # Suppress logging/display
     required: bool = True                 # False = optional form field
 ```
 

@@ -63,7 +63,6 @@ _MISSING_INPUT_FIELDS = {
     "type",
     "options",
     "resolvable_from_context",
-    "sensitive",
     "required",
 }
 _MISSING_INPUT_TYPES = {"string", "number", "integer", "boolean", "enum"}
@@ -404,7 +403,7 @@ def _validate_input_required_payload(payload: Dict[str, Any]) -> None:
                 "Malformed A2A v1 INPUT_REQUIRED response: "
                 f"missing_inputs[{index}].options must be null or a string list"
             )
-        for field in ("resolvable_from_context", "sensitive", "required"):
+        for field in ("resolvable_from_context", "required"):
             if not isinstance(item[field], bool):
                 raise A2AContractError(
                     "Malformed A2A v1 INPUT_REQUIRED response: "

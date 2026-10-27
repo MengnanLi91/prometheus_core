@@ -740,7 +740,6 @@ def test_specialist_form_answers_are_recorded_and_shown_to_the_model(harness) ->
                 "input_required": {
                     "missing_inputs": [
                         {"name": "rod_diameter_mm", "type": "number"},
-                        {"name": "api_token", "type": "string", "sensitive": True},
                     ],
                 },
                 "_a2a_task_id": "task-1",
@@ -757,8 +756,7 @@ def test_specialist_form_answers_are_recorded_and_shown_to_the_model(harness) ->
             "material_id": "model",
             "temperature_c": "model",
             "rod_diameter_mm": "user",
-            "api_token": "user",
-        }  # the sensitive value itself is never shown
+        }
         return reply("Analysis complete.")
 
     harness.script(
@@ -769,15 +767,14 @@ def test_specialist_form_answers_are_recorded_and_shown_to_the_model(harness) ->
     )
 
     send(query="Analyze SS316 at 500 C")
-    response = send(followup_answers={"rod_diameter_mm": "9.5", "api_token": "s3cret"})
+    response = send(followup_answers={"rod_diameter_mm": "9.5"})
 
     assert response.status == "completed"
     resumed = harness.invocations[1][1]
-    # Answers are merged into the params the agent receives, sensitive ones included.
-    assert (resumed["rod_diameter_mm"], resumed["api_token"]) == (9.5, "s3cret")
+    # Answers are merged into the params the agent receives.
+    assert resumed["rod_diameter_mm"] == 9.5
     recorded = harness.store[CONV]["conversation_history"][-1]["tool_inputs"]["analyze_thermal"]
     assert recorded == {"material_id": "SS316", "temperature_c": 500, "rod_diameter_mm": 9.5}
-    assert "s3cret" not in json.dumps(harness.store[CONV]["llm_messages"])
 
 
 def test_input_sources_distinguish_model_user_and_context(harness) -> None:
@@ -1455,38 +1452,6 @@ def test_an_error_from_a_resumed_workflow_step_fails_it_and_blocks_its_dependent
     assert result["status"] == "failed"
     assert result["step_statuses"] == {"thermal": "failed", "svg": "blocked"}
     assert result["errors"] == [{"step_id": "thermal", "skill_id": "analyze_thermal", "error": "Unsupported units."}]
-
-
-def test_a_sensitive_workflow_answer_reaches_only_its_step(harness, monkeypatch) -> None:
-    convert = {
-        "id": "png",
-        "skill_id": "convert_svg_to_png",
-        "depends_on": ["thermal"],
-        "params": {"artifact_id": {"literal": "svg-1"}},
-    }
-    _install_compiled_workflow(monkeypatch, [*SVG_THEN_THERMAL, convert])
-    png_replies = iter([{"input_required": {"missing_inputs": [{"name": "dpi", "type": "number"}]}}, png_result({})])
-    harness.results.update(
-        create_svg_artifact=svg_result,
-        analyze_thermal=_thermal_asks(
-            {"name": "api_token", "type": "string", "sensitive": True}, {"result": {"answer": "Authorized."}}
-        ),
-        convert_svg_to_png=lambda params: next(png_replies),
-    )
-    llm = harness.script([reply("Screened.")])
-
-    assert send(workflow_id=WORKFLOW_ID, followup_answers={"material_id": "SS316", "word": "x"}).status == "needs_info"
-    # The next step pauses too, so the workflow call (and its arguments) is persisted.
-    assert send(followup_answers={"api_token": "s3cret-token"}).status == "needs_info"
-    assert "s3cret-token" not in json.dumps(harness.store[CONV])
-    response = send(followup_answers={"dpi": 300})
-
-    assert response.status == "completed"
-    tokens = [params.get("api_token") for skill, params in harness.invocations if skill == "analyze_thermal"]
-    assert tokens == [None, "s3cret-token"]
-    assert "s3cret-token" not in json.dumps(harness.invocations[-2:])  # later steps never see it
-    assert "s3cret-token" not in json.dumps(harness.store[CONV])
-    assert "s3cret-token" not in llm.requests[0]["messages"][0]["content"]
 
 
 def test_workflow_keeps_artifacts_a_sibling_call_produced_meanwhile(harness, monkeypatch) -> None:

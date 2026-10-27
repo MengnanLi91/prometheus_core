@@ -44,6 +44,13 @@ if temperature_c is None:
     return {}
 ```
 
+### `MissingInput.sensitive` Removed
+
+The `sensitive` field was removed from `MissingInput`, and the client-agent now rejects an
+`INPUT_REQUIRED` descriptor that carries it. Delete `sensitive=...` from your
+`MissingInput(...)` calls. Every answer is merged into `params` and kept with the
+conversation, so don't ask the user for a secret through `INPUT_REQUIRED`.
+
 ## 0.14.0
 
 ### LLM Credentials No Longer Come from A2A Requests

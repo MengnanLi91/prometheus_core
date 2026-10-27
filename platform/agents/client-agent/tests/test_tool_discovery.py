@@ -213,7 +213,6 @@ def _input_required_payload(*names: str) -> dict:
                 "type": "number",
                 "options": None,
                 "resolvable_from_context": False,
-                "sensitive": False,
                 "required": True,
             }
             for name in names

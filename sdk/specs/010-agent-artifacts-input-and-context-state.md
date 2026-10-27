@@ -31,7 +31,7 @@ Let agents request missing structured input, persist per-conversation state, pub
 - BEH-010-03: GIVEN a local `file://` artifact outside allowed roots WHEN resolving it to a path THEN `PermissionError` is raised.
 
 ## Interfaces
-- `MissingInput(name: str, description: str, user_prompt: str, type: str, options: list[str] | None = None, resolvable_from_context: bool = False, sensitive: bool = False, required: bool = True)`
+- `MissingInput(name: str, description: str, user_prompt: str, type: str, options: list[str] | None = None, resolvable_from_context: bool = False, required: bool = True)`
 - `build_input_required_payload(missing_inputs: list[MissingInput], hint: str) -> dict[str, Any]`
 - `PrometheusAgent.send_input_required(context, event_queue, *, missing_inputs: list[MissingInput], hint: str, metadata: dict | None = None) -> None`
 - `PrometheusAgent.get_input_sources(context: RequestContext) -> dict[str, str]`
