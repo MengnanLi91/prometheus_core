@@ -1063,6 +1063,26 @@ def test_config_api_key_is_sent_as_proxy_bearer_token():
     assert observed_headers == ["Bearer proxy-key", "Bearer proxy-key"]
 
 
+async def test_async_config_api_key_is_sent_as_proxy_bearer_token():
+    # REQ-007-05: the async client sends the same bearer token.
+    observed_headers: list[str | None] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        observed_headers.append(request.headers.get("authorization"))
+        if request.url.path == "/v1/models":
+            return _proxy_response(request, _proxy_models("default"))
+        return _proxy_response(request, {"choices": [{"message": {"content": "ok"}}]})
+
+    client = AsyncLLMClient(
+        config=LLMConfig(proxy_url="http://proxy").with_api_key("proxy-key"),
+        http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+    )
+
+    await client("hello")
+
+    assert observed_headers == ["Bearer proxy-key", "Bearer proxy-key"]
+
+
 def _tool_call_payload(call_id="call_1", name="lookup", arguments='{"query": "iron"}'):
     return {"id": call_id, "type": "function", "function": {"name": name, "arguments": arguments}}
 

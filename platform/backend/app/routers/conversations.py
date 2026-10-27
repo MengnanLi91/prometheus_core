@@ -21,6 +21,8 @@ The rest of this router is new (chat-history feature): ``GET /{id}`` fetches one
 past conversation's transcript, ``PATCH``/``DELETE`` let a user rename or soft-delete
 it, and ``POST /{id}/resume`` rebinds the caller's session to it so the next chat
 turn continues that conversation rather than starting a fresh one.
+``GET /{id}/tasks`` returns the conversation's background-task tree (the client-agent's
+Task Graph) as JSON -- the structured counterpart of the ``/tasks`` slash command.
 
 ``ConversationStateClient`` (app/conversation_state.py) uses the **synchronous**
 redis client, so every call is offloaded to a worker thread with
@@ -50,12 +52,16 @@ from app.contract import (
     ConversationRenameRequest,
     ConversationResumeRequest,
     ConversationSummary,
+    ConversationTasksResponse,
+    TaskNodeOut,
 )
 from app.conversation_state import ConversationStateClient
+from app.redis_client import get_redis
 from app.security import TokenClaims, current_claims
 from app.services.artifacts import is_user_upload, shape_artifacts
 from app.services.mesh.service import enrich_mesh_artifact_dicts
 from app.sessions import get_store
+from app.task_events import build_task_tree
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +109,21 @@ async def get_recent_conversations(
     )
 
 
+def _owned_meta(conv_id: str, user_id: str) -> dict[str, Any] | None:
+    """Blocking ownership check, run in a worker thread: the conversation's
+    ``conv:meta`` hash when *user_id* owns it and it isn't soft-deleted, else ``None``
+    (also when Redis is down) -- callers map ``None`` uniformly to 404.
+
+    Compare with ``is None``: a conversation that was never renamed or deleted has an
+    empty meta hash, and ``{}`` is falsy.
+    """
+    client = _client()
+    if not client.available or not client.owns(user_id, conv_id):
+        return None
+    meta = client.get_meta(conv_id)
+    return None if meta.get("hidden") else meta
+
+
 def _fetch_detail_parts(conv_id: str, user_id: str) -> tuple[bool, dict[str, Any] | None]:
     """Blocking ownership check + raw store reads, run in a worker thread.
 
@@ -117,12 +138,10 @@ def _fetch_detail_parts(conv_id: str, user_id: str) -> tuple[bool, dict[str, Any
     because mesh enrichment (:func:`_build_detail`) is async and must run on the event
     loop, not in this thread.
     """
+    meta = _owned_meta(conv_id, user_id)
+    if meta is None:
+        return False, None
     client = _client()
-    if not client.available or not client.owns(user_id, conv_id):
-        return False, None
-    meta = client.get_meta(conv_id)
-    if meta.get("hidden"):
-        return False, None
     conv = client.get_conversation(conv_id) or {}
     return True, {
         "title": meta.get("title_override") or conv.get("title") or conv.get("user_query", ""),
@@ -177,6 +196,31 @@ async def get_conversation_detail(
 ) -> ConversationDetailResponse:
     parts = await _fetch_parts_or_404(conversation_id, claims.sub)
     return await _build_detail(conversation_id, parts)
+
+
+@router.get("/conversations/{conversation_id}/tasks", response_model=ConversationTasksResponse)
+async def get_conversation_tasks(
+    conversation_id: str,
+    request: Request,
+    claims: TokenClaims = Depends(current_claims),
+) -> ConversationTasksResponse:
+    """The conversation's background-task tree (the client-agent's Task Graph) as
+    JSON: the structured form of the ``/tasks`` slash command. Running and finished
+    tasks alike, root turns newest first, each with its skill dispatches nested."""
+    if await asyncio.to_thread(_owned_meta, conversation_id, claims.sub) is None:
+        raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+    try:
+        trees = await build_task_tree(get_redis(request), conversation_id)
+    except Exception as exc:
+        logger.warning("Task graph read failed for %s: %s", conversation_id, exc)
+        return ConversationTasksResponse(available=False, conversation_id=conversation_id)
+    # Stable sort: roots with equal (or missing) created_at keep graph order.
+    trees.sort(key=lambda t: str(t.get("created_at") or ""), reverse=True)
+    return ConversationTasksResponse(
+        available=True,
+        conversation_id=conversation_id,
+        tasks=[TaskNodeOut.model_validate(t) for t in trees],
+    )
 
 
 def _rename(conv_id: str, user_id: str, title: str) -> bool:
