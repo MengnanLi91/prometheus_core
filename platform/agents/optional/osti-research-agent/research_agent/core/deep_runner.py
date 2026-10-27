@@ -265,11 +265,12 @@ async def build_final_result(
         answer_text, provenance, paper_to_provenance
     )
 
-    suggested_queries = await llm_steps.suggest_followup_queries(
+    # From the verified findings only - not the rendered answer or search
+    # titles - so a suggestion never builds on unverified material.
+    suggested_queries = await llm_steps.suggest_followup_from_findings(
         question=question,
-        answer=answer_text,
+        findings=answers,
         complete=ctx.complete,
-        provenance=provenance,
         limit=3,
     )
 

@@ -959,7 +959,7 @@ def test_real_compiled_task_reads_artifacts_and_returns_verified_finding(
         return []
 
     monkeypatch.setattr(
-        "research_agent.llm_steps.suggest_followup_queries",
+        "research_agent.llm_steps.suggest_followup_from_findings",
         no_followups,
     )
     final = asyncio.run(

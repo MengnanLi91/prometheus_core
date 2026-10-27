@@ -61,11 +61,11 @@ def _config():
 
 
 def _run(script, monkeypatch, final_text):
-    # suggest_followup_queries would otherwise make a real LLM call.
+    # suggest_followup_from_findings would otherwise make a real LLM call.
     async def no_followups(**kwargs):
         return [{"suggested_query": "next?"}]
 
-    monkeypatch.setattr(llm_steps, "suggest_followup_queries", no_followups)
+    monkeypatch.setattr(llm_steps, "suggest_followup_from_findings", no_followups)
 
     ai_call = AIMessage(
         content="",
@@ -167,7 +167,7 @@ def test_final_answer_uses_captured_findings_only(monkeypatch):
     async def no_followups(**kwargs):
         return []
 
-    monkeypatch.setattr(llm_steps, "suggest_followup_queries", no_followups)
+    monkeypatch.setattr(llm_steps, "suggest_followup_from_findings", no_followups)
 
     context = deep_runner.RunContext(
         config=_config(),
@@ -203,7 +203,7 @@ def test_orchestrator_findings_cannot_bypass_verification(monkeypatch):
     async def no_followups(**kwargs):
         return []
 
-    monkeypatch.setattr(llm_steps, "suggest_followup_queries", no_followups)
+    monkeypatch.setattr(llm_steps, "suggest_followup_from_findings", no_followups)
     context = deep_runner.RunContext(
         config=_config(),
         complete=_fake_complete,
@@ -230,7 +230,7 @@ def test_total_verifier_failure_returns_error(monkeypatch):
     async def no_followups(**kwargs):
         return []
 
-    monkeypatch.setattr(llm_steps, "suggest_followup_queries", no_followups)
+    monkeypatch.setattr(llm_steps, "suggest_followup_from_findings", no_followups)
     context = deep_runner.RunContext(
         config=_config(),
         complete=_fake_complete,
@@ -255,7 +255,7 @@ def test_verified_findings_survive_other_verifier_failures(monkeypatch):
     async def no_followups(**kwargs):
         return []
 
-    monkeypatch.setattr(llm_steps, "suggest_followup_queries", no_followups)
+    monkeypatch.setattr(llm_steps, "suggest_followup_from_findings", no_followups)
     context = deep_runner.RunContext(
         config=_config(),
         complete=_fake_complete,
@@ -287,7 +287,7 @@ def _run_recording_workdir(monkeypatch, tmp_path, *, fail=False):
     async def no_followups(**kwargs):
         return []
 
-    monkeypatch.setattr(llm_steps, "suggest_followup_queries", no_followups)
+    monkeypatch.setattr(llm_steps, "suggest_followup_from_findings", no_followups)
     seen = []
 
     class _Graph:
@@ -341,7 +341,7 @@ def test_papers_analyzed_counts_every_analysis_not_just_findings(monkeypatch):
     async def no_followups(**kwargs):
         return []
 
-    monkeypatch.setattr(llm_steps, "suggest_followup_queries", no_followups)
+    monkeypatch.setattr(llm_steps, "suggest_followup_from_findings", no_followups)
     context = deep_runner.RunContext(
         config=_config(), complete=_fake_complete, question="q"
     )
@@ -372,7 +372,7 @@ def _final_with_knowledge(monkeypatch, *, with_finding):
     async def no_followups(**kwargs):
         return []
 
-    monkeypatch.setattr(llm_steps, "suggest_followup_queries", no_followups)
+    monkeypatch.setattr(llm_steps, "suggest_followup_from_findings", no_followups)
     context = deep_runner.RunContext(
         config=_config(), complete=_fake_complete, question="q"
     )
@@ -410,7 +410,7 @@ def _final_for_synthesis(monkeypatch, synthesized):
         assert [a["osti_id"] for a in answers] == ["123"]
         return synthesized
 
-    monkeypatch.setattr(llm_steps, "suggest_followup_queries", no_followups)
+    monkeypatch.setattr(llm_steps, "suggest_followup_from_findings", no_followups)
     monkeypatch.setattr(synthesis, "synthesize", fake_synthesize)
     context = deep_runner.RunContext(
         config=_config(), complete=_fake_complete, question="q"

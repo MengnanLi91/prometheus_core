@@ -25,6 +25,7 @@ from research_agent.prompt_templates import (
     ASSESS_ABSTRACT_PROMPT_TEMPLATE,
     EXTRACT_ANSWER_PROMPT_TEMPLATE,
     EXTRACT_FACTS_PROMPT_TEMPLATE,
+    FOLLOWUP_FROM_FINDINGS_PROMPT_TEMPLATE,
     FOLLOWUP_QUERIES_PROMPT_TEMPLATE,
     SEARCH_QUERY_PROMPT_TEMPLATE,
     SYNTHESIZE_ANSWER_PROMPT_TEMPLATE,
@@ -168,6 +169,42 @@ async def suggest_followup_queries(
         limit=limit,
     )
 
+    return await _complete_suggestions(prompt, complete, limit)
+
+
+async def suggest_followup_from_findings(
+    question: str,
+    findings: List[Dict[str, Any]],
+    complete: CompleteFn,
+    limit: int = 3,
+) -> List[Dict[str, str]]:
+    """Generate follow-up queries from verified findings only.
+
+    Returns no suggestions without findings: a follow-up should point past what
+    the papers actually showed, not past an answer that has no evidence."""
+    if not findings:
+        return []
+    prompt = FOLLOWUP_FROM_FINDINGS_PROMPT_TEMPLATE.format(
+        question=question,
+        findings_json=json.dumps(
+            [
+                {
+                    "title": f.get("title", ""),
+                    "answer": f.get("answer", ""),
+                    "evidence": str(f.get("evidence", ""))[:800],
+                }
+                for f in findings[:10]
+            ],
+            indent=2,
+        ),
+        limit=limit,
+    )
+    return await _complete_suggestions(prompt, complete, limit)
+
+
+async def _complete_suggestions(
+    prompt: str, complete: CompleteFn, limit: int
+) -> List[Dict[str, str]]:
     suggestions: List[Dict[str, str]] = []
     seen = set()
 
