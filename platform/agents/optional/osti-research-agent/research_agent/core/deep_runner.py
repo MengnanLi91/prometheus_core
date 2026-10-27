@@ -230,6 +230,7 @@ async def build_final_result(
             answer=(final_text or "The agent did not produce a final answer.").strip(),
             findings=list(ctx.findings),
             papers_analyzed=len(ctx.paper_analysis_results),
+            searched_papers=dict(ctx.search_hits),
         )
 
     # Only engine-verified findings are authoritative. The orchestrator's final
@@ -286,6 +287,7 @@ async def build_final_result(
         papers_analyzed=len(ctx.paper_analysis_results),
         facts_stored=ctx.facts_stored,
         suggested_queries=suggested_queries,
+        searched_papers=dict(ctx.search_hits),
     )
 
 

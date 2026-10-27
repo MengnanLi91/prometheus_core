@@ -67,6 +67,11 @@ class FinalResult(BaseModel):
     cached: bool = False
     source: Optional[str] = None
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    # Every search hit of the run (source_id -> hit), for the A2A layer to show
+    # as artifacts. Excluded from the emitted JSON so the wire shape is unchanged.
+    searched_papers: Dict[str, Dict[str, Any]] = Field(
+        default_factory=dict, exclude=True
+    )
 
 
 AgentEvent = Union[ProgressEvent, FinalResult]

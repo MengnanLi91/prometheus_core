@@ -35,7 +35,13 @@ from datetime import datetime, timezone
 from typing import Any, Dict
 
 import redis
-from prometheus_api.agent import EventQueue, PrometheusAgent, RequestContext, TaskState
+from prometheus_api.agent import (
+    ArtifactReference,
+    EventQueue,
+    PrometheusAgent,
+    RequestContext,
+    TaskState,
+)
 from prometheus_api.llm_client import LLMConfig
 
 from research_agent.core.adapter import result_to_a2a_json
@@ -43,6 +49,10 @@ from research_agent.core.config import AgentConfig
 from research_agent.core.events import ProgressEvent
 from research_agent.core.model_profile import apply_model_profile
 from research_agent.core.runner import ResearchRunner
+from research_agent.core.search_artifacts import (
+    evidence_citations,
+    searched_papers_markdown,
+)
 from research_agent.memory import RedisCaches
 
 # Configure logging
@@ -159,6 +169,70 @@ class OSTIResearchAgent(PrometheusAgent):
             f"[RESULT] Final result sent to event queue ({len(result_text)} chars)"
         )
 
+    async def _send_search_artifacts(
+        self,
+        context: RequestContext,
+        event_queue: EventQueue,
+        final,
+    ) -> None:
+        """Show the run's searched papers and its evidence sources as artifacts.
+
+        Registered and sent under one id each, like every inline artifact. The
+        list is Markdown (report viewer); each source used as evidence is a
+        citation card (reference viewer, routed by its tags, so it carries no
+        MIME type). Never fails the run: the answer is already complete."""
+        try:
+            listing = searched_papers_markdown(final)
+            if listing:
+                await self._send_registered_text(
+                    context,
+                    event_queue,
+                    ArtifactReference(
+                        artifact_id=str(uuid.uuid4()),
+                        conversation_id="",
+                        name="searched_papers.md",
+                        description=(
+                            f"{len(final.searched_papers)} paper(s) and abstracts "
+                            "returned by the literature searches"
+                        ),
+                        mime_type="text/markdown",
+                        text_body=listing,
+                        tags=["osti", "literature", "search_results"],
+                    ),
+                )
+            for card in evidence_citations(final):
+                await self._send_registered_text(
+                    context,
+                    event_queue,
+                    ArtifactReference(
+                        artifact_id=str(uuid.uuid4()),
+                        conversation_id="",
+                        name=card.name,
+                        description=card.description,
+                        uri=card.uri,
+                        text_body=card.description,
+                        tags=["reference", "citation", "osti", "literature"],
+                        metadata={"source": card.source},
+                    ),
+                )
+        except Exception as e:
+            logger.warning("Failed to send literature search artifacts: %s", e)
+
+    async def _send_registered_text(
+        self,
+        context: RequestContext,
+        event_queue: EventQueue,
+        reference: ArtifactReference,
+    ) -> None:
+        registered = self.register_artifact_reference(context, reference)
+        await self.send_text_artifact(
+            context,
+            event_queue,
+            text=registered.text_body or "",
+            name=registered.name,
+            artifact_id=registered.artifact_id,
+        )
+
     async def _execute(
         self,
         params: Dict[str, Any],
@@ -222,6 +296,8 @@ class OSTIResearchAgent(PrometheusAgent):
                     )
                 else:
                     final = event
+
+        await self._send_search_artifacts(context, event_queue, final)
 
         result_text = result_to_a2a_json(final)
         await self._send_final_result(

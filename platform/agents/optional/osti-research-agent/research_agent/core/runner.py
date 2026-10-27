@@ -273,4 +273,5 @@ def _deep_timeout_result(
         provenance=provenance,
         findings=list(findings),
         papers_analyzed=len(findings),
+        searched_papers=dict(search_hits),
     )

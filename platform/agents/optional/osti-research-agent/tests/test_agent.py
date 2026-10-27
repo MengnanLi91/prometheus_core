@@ -74,3 +74,83 @@ def test_status_updates_use_a2a_v1_task_states():
     assert sent_statuses[0]["final"] is False
     assert sent_statuses[1]["state"] == mod.TaskState.TASK_STATE_COMPLETED
     assert sent_statuses[1]["final"] is True
+
+
+def _artifact_agent(mod, registered, sent):
+    agent = object.__new__(mod.OSTIResearchAgent)
+
+    def register(context, reference):
+        reference.conversation_id = "conv-1"
+        registered.append(reference)
+        return reference
+
+    async def send_text(context, event_queue, *, text, name, artifact_id):
+        sent.append({"text": text, "name": name, "artifact_id": artifact_id})
+
+    agent.register_artifact_reference = register
+    agent.send_text_artifact = send_text
+    return agent
+
+
+def _search_result(mod):
+    from research_agent.core.events import FinalResult, Finding
+
+    return FinalResult(
+        status="completed",
+        question="Does Ti creep?",
+        searched_papers={
+            "123": {"title": "Creep of Ti", "url": "https://www.osti.gov/biblio/123"},
+            "456": {"title": "Unused", "url": "https://www.osti.gov/biblio/456"},
+        },
+        findings=[Finding(source_id="123", answer="creeps above 800 C")],
+    )
+
+
+def test_search_artifacts_are_registered_and_sent_under_one_id():
+    mod = _load_agent_module()
+    registered, sent = [], []
+    agent = _artifact_agent(mod, registered, sent)
+
+    asyncio.run(agent._send_search_artifacts(object(), object(), _search_result(mod)))
+
+    listing, card = registered
+    assert [s["artifact_id"] for s in sent] == [listing.artifact_id, card.artifact_id]
+    assert [s["text"] for s in sent] == [listing.text_body, card.text_body]
+    assert listing.mime_type == "text/markdown" and "Unused" in listing.text_body
+    assert card.uri == "https://www.osti.gov/biblio/123"
+    assert card.mime_type is None and "reference" in card.tags
+    assert card.metadata == {"source": "OSTI · 123"}
+
+
+def test_search_artifacts_route_to_report_and_reference_viewers():
+    backend = Path(__file__).resolve().parents[4] / "backend"
+    if not (backend / "app" / "services" / "artifacts.py").exists():
+        pytest.skip("backend sources not available")
+    import sys
+
+    sys.path.insert(0, str(backend))
+    try:
+        from app.services.artifacts import classify_render_hint
+    except ImportError as exc:
+        pytest.skip(f"backend dependencies not installed: {exc}")
+    finally:
+        sys.path.remove(str(backend))
+
+    mod = _load_agent_module()
+    registered, sent = [], []
+    agent = _artifact_agent(mod, registered, sent)
+    asyncio.run(agent._send_search_artifacts(object(), object(), _search_result(mod)))
+
+    hints = [classify_render_hint(r.to_dict()) for r in registered]
+    assert hints == ["report", "reference"]
+
+
+def test_search_artifact_failure_does_not_fail_the_run():
+    mod = _load_agent_module()
+    agent = object.__new__(mod.OSTIResearchAgent)
+
+    def broken_register(context, reference):
+        raise ConnectionError("redis down")
+
+    agent.register_artifact_reference = broken_register
+    asyncio.run(agent._send_search_artifacts(object(), object(), _search_result(mod)))

@@ -68,6 +68,24 @@ longer than `MAX_ANSWER_CHARS` is rejected. The synthesis is used only when the
 grader ends `satisfied` and every `Paper N` citation is in range; otherwise the
 answer is the findings rendered per paper, as before.
 
+### Literature artifacts
+
+After each run `agent.py` sends two kinds of conversation artifacts, built by
+`core/search_artifacts.py` from the run's search hits (carried on
+`FinalResult.searched_papers`, which is excluded from the result JSON):
+
+- `searched_papers.md` - every paper the searches returned, with its source,
+  year, link, and abstract (cut to 600 characters, at most 40 papers); papers
+  used as verified evidence are marked. `text/markdown`, so the report viewer
+  shows it.
+- one citation card per verified finding: tags `reference`/`citation`, `uri`
+  set to the paper's page, `metadata.source` naming the source. No MIME type,
+  so the tags route it to the reference viewer.
+
+They live in the platform's artifact registry in Valkey (no DeepLynx) and
+expire with it (`ARTIFACT_REGISTRY_TTL_SECONDS`). Sending them never fails the
+run.
+
 ## Tools (deepagent engine)
 
 Tools are thin `@tool` wrappers built per-run over a shared `RunContext`

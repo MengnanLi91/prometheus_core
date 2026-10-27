@@ -95,6 +95,8 @@ def build_search_tools(ctx: RunContext) -> List[BaseTool]:
                 "url": h.get("url", ""),
                 "oa_pdf_url": h.get("oa_pdf_url"),
                 "origin": h.get("origin", "openalex"),
+                "abstract": h.get("abstract") or "",
+                "year": h.get("year"),
             }
             out.append(
                 {
@@ -145,6 +147,8 @@ def build_search_tools(ctx: RunContext) -> List[BaseTool]:
                 "title": h.get("title", ""),
                 "url": url,
                 "origin": h.get("origin", "web"),
+                "abstract": h.get("snippet") or "",
+                "year": h.get("published"),
             }
             out.append(
                 {
