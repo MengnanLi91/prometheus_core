@@ -12,16 +12,10 @@
 
 import { Diamond, Zap } from "lucide-react";
 import { Button } from "../ui/Button";
+import { Tag } from "../ui/Tag";
 
+/** Shown as a neutral Tag: complexity is what a template is, not how it's doing. */
 export type WorkflowComplexity = "complex" | "moderate" | "simple";
-
-/** Badge colours from D.1. COMPLEX borrows the error token for its red: Figma
- * notes it isn't an error state, and a non-error colour is still to be picked. */
-const COMPLEXITY_CLASSES: Record<WorkflowComplexity, string> = {
-  complex: "border-error bg-error/10 text-error",
-  moderate: "border-primary bg-primary/10 text-primary",
-  simple: "border-info bg-info/10 text-info",
-};
 
 export interface WorkflowTemplate {
   id: string;
@@ -61,7 +55,7 @@ export function WorkflowTemplateCard({ template, selected = false, onSelect }: W
             {name}
           </h3>
           <div className="flex flex-wrap items-center gap-2 text-[10px] uppercase leading-3">
-            <span className={`rounded border px-2 py-0.5 ${COMPLEXITY_CLASSES[complexity]}`}>{complexity}</span>
+            <Tag label={complexity} />
             <span className="inline-flex items-center gap-1 font-bold text-primary">
               <Diamond aria-hidden="true" size={9} className="fill-current" />
               {checkpoints} {checkpoints === 1 ? "checkpoint" : "checkpoints"}
