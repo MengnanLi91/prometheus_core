@@ -335,3 +335,26 @@ def test_run_workdir_removed_when_run_fails(monkeypatch, tmp_path):
         pass
 
     assert seen and not seen[0].exists()
+
+
+def test_papers_analyzed_counts_every_analysis_not_just_findings(monkeypatch):
+    async def no_followups(**kwargs):
+        return []
+
+    monkeypatch.setattr(llm_steps, "suggest_followup_queries", no_followups)
+    context = deep_runner.RunContext(
+        config=_config(), complete=_fake_complete, question="q"
+    )
+    context.papers_attempted = 3  # one of the three never parsed
+    context.findings.append(
+        deep_runner.Finding(source_id="1", answer="a", evidence="Table 1")
+    )
+    context.paper_analysis_results = {
+        "1": {"source_id": "1", "answer": "a"},
+        "2": {"answered": False, "reason": "not supported"},
+    }
+    final_text = json.dumps({"findings": [], "answer": ""})
+
+    final = asyncio.run(deep_runner.build_final_result("q", final_text, context))
+
+    assert final.papers_analyzed == 2

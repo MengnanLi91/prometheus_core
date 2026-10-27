@@ -89,7 +89,10 @@ class RunContext:
     # Invalid structured requests have no usable parsed source, so cache them
     # separately without consuming analyzer or verifier calls.
     invalid_paper_analysis_results: Dict[str, dict] = field(default_factory=dict)
-    papers_analyzed: int = 0
+    # Papers whose parse was attempted, counted before parsing so a PDF that
+    # keeps failing to parse still uses up its slot. This is the paper budget;
+    # FinalResult.papers_analyzed reports analyses instead.
+    papers_attempted: int = 0
     # Discrete facts written to the knowledge base via store_facts (reported in
     # the FinalResult).
     facts_stored: int = 0
@@ -99,10 +102,10 @@ class RunContext:
 
     def budget_reason(self) -> Optional[str]:
         """Why a new expensive tool call should refuse, or None if it may run."""
-        if self.papers_analyzed >= self.config.max_papers_analyzed:
+        if self.papers_attempted >= self.config.max_papers_analyzed:
             return (
-                f"paper budget reached ({self.papers_analyzed}/"
-                f"{self.config.max_papers_analyzed} analyzed)"
+                f"paper budget reached ({self.papers_attempted}/"
+                f"{self.config.max_papers_analyzed} papers)"
             )
         if self.seconds_left() < BUDGET_FLOOR_S:
             return f"time budget nearly exhausted ({self.seconds_left():.0f}s left)"

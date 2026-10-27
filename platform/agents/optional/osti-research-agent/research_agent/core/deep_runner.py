@@ -226,7 +226,7 @@ async def build_final_result(
             question=question,
             answer=(final_text or "The agent did not produce a final answer.").strip(),
             findings=list(ctx.findings),
-            papers_analyzed=ctx.papers_analyzed,
+            papers_analyzed=len(ctx.paper_analysis_results),
         )
 
     # Only engine-verified findings are authoritative. The orchestrator's final
@@ -272,7 +272,7 @@ async def build_final_result(
         answer=answer_text,
         provenance=provenance,
         findings=findings,
-        papers_analyzed=len(findings),
+        papers_analyzed=len(ctx.paper_analysis_results),
         facts_stored=ctx.facts_stored,
         suggested_queries=suggested_queries,
     )

@@ -253,7 +253,7 @@ def build_osti_tools(ctx: RunContext) -> List[BaseTool]:
 
         # Count the attempt before parsing so a repeatedly-failing paper can't
         # loop against the paper budget.
-        ctx.papers_analyzed += 1
+        ctx.papers_attempted += 1
         try:
             parsed = await parse_pipeline.parse_paper_pipeline(
                 pdf_path,

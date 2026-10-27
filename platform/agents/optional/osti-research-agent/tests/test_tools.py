@@ -157,7 +157,7 @@ def test_download_paper_success_records_path(monkeypatch):
 
 def test_download_paper_refuses_over_budget_without_raising():
     ctx = _ctx()
-    ctx.papers_analyzed = ctx.config.max_papers_analyzed  # budget hit
+    ctx.papers_attempted = ctx.config.max_papers_analyzed  # budget hit
     download = _tool(build_osti_tools(ctx), "download_paper")
 
     out = json.loads(asyncio.run(download.ainvoke({"source_id": "999"})))
@@ -289,7 +289,7 @@ def test_parse_paper_summarizes_and_uses_agent_paths(monkeypatch):
     assert out["dir"] == "/papers/123"
     assert out["tables"][0]["md_path"] == "/papers/123/tables/table_01.md"
     assert out["figures"][0]["json_path"] == "/papers/123/figures/fig_01.json"
-    assert ctx.papers_analyzed == 1
+    assert ctx.papers_attempted == 1
 
 
 def test_parse_paper_returns_existing_summary_without_reparsing(monkeypatch):
@@ -310,7 +310,7 @@ def test_parse_paper_returns_existing_summary_without_reparsing(monkeypatch):
 
     assert first == second
     assert calls == 1
-    assert ctx.papers_analyzed == 1
+    assert ctx.papers_attempted == 1
 
 
 def test_parse_paper_requires_a_download_first():
@@ -332,7 +332,7 @@ def test_parse_paper_refuses_over_budget_without_running(monkeypatch):
     monkeypatch.setattr(parse_pipeline, "parse_paper_pipeline", fake_pipeline)
     ctx = _ctx()
     ctx.pdf_paths["123"] = "/tmp/123.pdf"
-    ctx.papers_analyzed = ctx.config.max_papers_analyzed
+    ctx.papers_attempted = ctx.config.max_papers_analyzed
     parse = _tool(build_osti_tools(ctx), "parse_paper")
 
     out = json.loads(asyncio.run(parse.ainvoke({"source_id": "123"})))
@@ -352,7 +352,7 @@ def test_parse_paper_returns_error_string_when_pipeline_raises(monkeypatch):
     out = json.loads(asyncio.run(parse.ainvoke({"source_id": "123"})))
     assert out["ok"] is False
     assert "parse failed" in out["error"]
-    assert ctx.papers_analyzed == 1  # the attempt still counts against budget
+    assert ctx.papers_attempted == 1  # the attempt still counts against budget
 
 
 # --- knowledge base -------------------------------------------------------
