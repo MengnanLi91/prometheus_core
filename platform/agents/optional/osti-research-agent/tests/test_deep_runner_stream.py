@@ -358,3 +358,43 @@ def test_papers_analyzed_counts_every_analysis_not_just_findings(monkeypatch):
     final = asyncio.run(deep_runner.build_final_result("q", final_text, context))
 
     assert final.papers_analyzed == 2
+
+
+class _RecordingKnowledge:
+    def __init__(self):
+        self.cached = []
+
+    async def cache_answer(self, question, answer, sources):
+        self.cached.append((question, answer, sources))
+
+
+def _final_with_knowledge(monkeypatch, *, with_finding):
+    async def no_followups(**kwargs):
+        return []
+
+    monkeypatch.setattr(llm_steps, "suggest_followup_queries", no_followups)
+    context = deep_runner.RunContext(
+        config=_config(), complete=_fake_complete, question="q"
+    )
+    context.knowledge = _RecordingKnowledge()
+    if with_finding:
+        context.findings.append(
+            deep_runner.Finding(source_id="123", answer="a", evidence="Table 1")
+        )
+    final_text = json.dumps({"findings": [], "answer": ""})
+    final = asyncio.run(deep_runner.build_final_result("q", final_text, context))
+    return final, context.knowledge.cached
+
+
+def test_completed_answer_is_cached(monkeypatch):
+    final, cached = _final_with_knowledge(monkeypatch, with_finding=True)
+
+    assert final.status == "completed"
+    assert cached == [("q", final.answer, final.provenance)]
+
+
+def test_no_results_answer_is_not_cached(monkeypatch):
+    final, cached = _final_with_knowledge(monkeypatch, with_finding=False)
+
+    assert final.status == "no_results"
+    assert cached == []

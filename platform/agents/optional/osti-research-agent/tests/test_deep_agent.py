@@ -92,6 +92,9 @@ class _FakeKnowledgeStore:
     async def store_fact(self, **kwargs):
         return "fact-1"
 
+    async def cache_answer(self, question, answer, sources):
+        return None
+
 
 def _verification(**overrides):
     values = {

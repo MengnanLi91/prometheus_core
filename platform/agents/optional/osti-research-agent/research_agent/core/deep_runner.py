@@ -266,6 +266,11 @@ async def build_final_result(
         limit=3,
     )
 
+    if status == "completed" and ctx.knowledge is not None:
+        # A retrieval hint for later runs (search_knowledge_base); those runs
+        # still re-verify the sources before using any of it.
+        await ctx.knowledge.cache_answer(question, answer_text, provenance)
+
     return FinalResult(
         status=status,
         question=question,

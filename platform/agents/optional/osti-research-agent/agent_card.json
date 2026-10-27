@@ -11,7 +11,7 @@
       "id": "search_literature",
       "name": "Search Literature",
       "description": "Search OSTI, the open scholarly literature (OpenAlex/arXiv), and the web for peer-reviewed publications, experimental data, and research findings to answer specific questions about material properties, operating parameters, or engineering phenomena; extracts quantitative evidence from tables and figures and cites its sources",
-      "usage_notes": "Use when you need published experimental data, peer-reviewed research, or information not available in the material database. Long-running operation - reserve for questions requiring literature support. Repeat questions are answered from memory in seconds",
+      "usage_notes": "Use when you need published experimental data, peer-reviewed research, or information not available in the material database. Long-running operation - reserve for questions requiring literature support. Prior research is reused to target sources faster; findings are always re-verified against the papers",
       "requires_approval": false,
       "expected_duration_seconds": 300,
       "output_format": "JSON with answer, provenance (source papers), and citations",
