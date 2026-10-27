@@ -77,7 +77,7 @@ Default `IMAGE_TAG` is `git rev-parse --short HEAD`.
 ### PrometheusAgent contract
 Subclasses override `async _execute(self, params, context: RequestContext, event_queue: EventQueue) -> dict`. The base class emits the returned dict as the terminal `TaskStatusUpdateEvent`.
 
-Before `_execute`, the standard executor uses a just-in-time `deeplynx` credential to create a mandatory execution item. It records the agent, task, context, verified user, and effective parameters. Parameters are recursively redacted and stored as JSON in the scalar `parameters_json` property to avoid DeepLynx's properties-depth limit; decode them with `json.loads(...)`. If record creation fails, the task fails before subclass work begins.
+Before `_execute`, the standard executor uses a just-in-time `deeplynx` credential to create a mandatory execution item. It records the agent, task, context, verified user, and effective parameters. The item name uses the invoked skill's agent-card name (falling back to its ID or a general execution name) and never includes the task ID; task correlation remains in the description, properties, and `original_id`. Parameters are recursively redacted and stored as JSON in the scalar `parameters_json` property to avoid DeepLynx's properties-depth limit; decode them with `json.loads(...)`. If record creation fails, the task fails before subclass work begins.
 
 During `_execute`, `self.execution_record_id` provides the request-scoped item ID and returns `None` outside that invocation. The verified identity replaces any caller-provided `params["user_id"]`. Deployments require valid DeepLynx credentials and either `DEEPLYNX_DATA_SOURCE_ID` or a project default data source.
 

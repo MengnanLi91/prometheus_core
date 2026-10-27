@@ -1467,6 +1467,53 @@ class PrometheusAgent:
         value = self._execution_record_id.get()
         return value if isinstance(value, int) else None
 
+    def _get_execution_skill_label(self, params: Dict[str, Any]) -> Optional[str]:
+        """Return the invoked skill's display name, ID fallback, or ``None``."""
+        raw_skill_id = params.get("skill_id")
+        skill_id = str(raw_skill_id).strip() if raw_skill_id is not None else ""
+        if not skill_id:
+            return None
+
+        for skill in getattr(self.agent_card, "skills", []) or []:
+            if str(skill.id) == skill_id:
+                skill_name = str(skill.name).strip()
+                return skill_name or skill_id
+        return skill_id
+
+    @staticmethod
+    def _truncate_name_value(value: str, limit: int) -> str:
+        """Truncate a quoted name value without breaking its surrounding syntax."""
+        if len(value) <= limit:
+            return value
+        if limit <= 0:
+            return ""
+        if limit == 1:
+            return "…"
+        return value[: limit - 1] + "…"
+
+    def _build_execution_record_name(
+        self,
+        params: Dict[str, Any],
+        *,
+        user_id: str,
+        created_at: str,
+    ) -> str:
+        """Build a human-readable, skill-oriented execution item name."""
+        skill_label = self._get_execution_skill_label(params)
+        if skill_label is None:
+            fixed_length = len("'' execution by '' at ''") + len(user_id) + len(created_at)
+            agent_name = self._truncate_name_value(self.agent_name, 499 - fixed_length)
+            return f"'{agent_name}' execution by '{user_id}' at '{created_at}'"
+
+        fixed_length = len("'' executed skill '' by '' at ''") + len(user_id) + len(created_at)
+        label_budget = max(0, 499 - fixed_length)
+        agent_budget = min(len(self.agent_name), label_budget // 2)
+        skill_budget = min(len(skill_label), label_budget - agent_budget)
+        agent_budget = min(len(self.agent_name), label_budget - skill_budget)
+        agent_name = self._truncate_name_value(self.agent_name, agent_budget)
+        skill_name = self._truncate_name_value(skill_label, skill_budget)
+        return f"'{agent_name}' executed skill '{skill_name}' by '{user_id}' at '{created_at}'"
+
     @asynccontextmanager
     async def _create_execution_record(
         self,
@@ -1502,14 +1549,11 @@ class PrometheusAgent:
         }
         credential = await self.get_credential("deeplynx")
         config = ConnectionConfig.from_credential(credential)
-        execution_name = (
-            f"Agent {self.agent_name} executed task_{task_id} by {identity.user_id} at {created_at}"
+        execution_name = self._build_execution_record_name(
+            params,
+            user_id=identity.user_id,
+            created_at=created_at,
         )
-        if len(execution_name) > 500:
-            prefix = f"{identity.user_id}_"
-            suffix = f"_{task_id}_{created_at}"
-            available_agent_length = max(0, 499 - len(prefix) - len(suffix))
-            execution_name = f"{prefix}{self.agent_name[:available_agent_length]}{suffix}"[:499]
         item_create = ItemCreate(
             name=execution_name,
             description=f"Execution record for task {task_id}",

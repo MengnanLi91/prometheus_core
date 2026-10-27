@@ -38,6 +38,7 @@ from prometheus_api.agent import (
     TaskArtifactUpdateEvent,
     UserIdentity,
 )
+from prometheus_api.agent.identity import identity_scope
 from prometheus_api.agent.registry import AgentRegistryClient
 from prometheus_api.llm_client import AsyncLLMClient, LLMConfig
 from a2a.types import AgentCapabilities, AgentCard, AgentInterface, AgentSkill, Artifact, Part, Task
@@ -201,6 +202,16 @@ class TestPrometheusAgentExecutor:
         params = executor._extract_params(LocalLikeContext())
 
         assert params == {"skill_id": "demo_skill", "message": "hello"}
+
+    async def test_delegating_executor_without_execution_scope(self, mock_context):
+        execute_fn = AsyncMock(return_value={"ok": True})
+        executor = DelegatingPrometheusAgentExecutor(
+            agent_name="TestAgent",
+            execute_fn=execute_fn,
+        )
+
+        async with executor._establish_request_scope({}, mock_context):
+            pass
 
     def test_execute_calls_enqueue_event(self, executor, mock_context, mock_event_queue):
         """Test that execute uses enqueue_event for status updates."""
@@ -837,6 +848,63 @@ workflows:
         assert events == ["startup", "running", ("register", "Test Agent"), "shutdown"]
         assert app.state.registry_registration_task.done()
 
+    @pytest.mark.parametrize(
+        ("environment", "error"),
+        [
+            ({"CREDENTIAL_BROKER": "vault"}, None),
+            (
+                {
+                    "DEEPLYNX_JWT_TOKEN": "jwt",
+                    "DEEPLYNX_KEY": "key",
+                    "DEEPLYNX_ORG_ID": "1",
+                    "DEEPLYNX_PROJECT_ID": "2",
+                },
+                "not both",
+            ),
+            (
+                {
+                    "DEEPLYNX_KEY": "key",
+                    "DEEPLYNX_ORG_ID": "1",
+                    "DEEPLYNX_PROJECT_ID": "2",
+                },
+                "set DEEPLYNX_JWT_TOKEN",
+            ),
+            (
+                {
+                    "DEEPLYNX_JWT_TOKEN": "jwt",
+                },
+                "missing DEEPLYNX_ORG_ID, DEEPLYNX_PROJECT_ID",
+            ),
+            (
+                {
+                    "DEEPLYNX_JWT_TOKEN": "jwt",
+                    "DEEPLYNX_ORG_ID": "1",
+                    "DEEPLYNX_PROJECT_ID": "2",
+                },
+                None,
+            ),
+        ],
+    )
+    def test_validate_deeplynx_configuration(self, monkeypatch, environment, error):
+        names = (
+            "CREDENTIAL_BROKER",
+            "DEEPLYNX_JWT_TOKEN",
+            "DEEPLYNX_KEY",
+            "DEEPLYNX_SECRET",
+            "DEEPLYNX_ORG_ID",
+            "DEEPLYNX_PROJECT_ID",
+        )
+        for name in names:
+            monkeypatch.delenv(name, raising=False)
+        for name, value in environment.items():
+            monkeypatch.setenv(name, value)
+
+        if error is None:
+            PrometheusAgent._validate_deeplynx_configuration()
+        else:
+            with pytest.raises(RuntimeError, match=error):
+                PrometheusAgent._validate_deeplynx_configuration()
+
     def test_configure_auth_requires_secret_by_default(self, monkeypatch):
         agent = PrometheusAgent(agent_name="MyAgent")
         app = Starlette()
@@ -1162,6 +1230,7 @@ workflows:
             ),
         )
         agent = Agent(agent_name="Record Agent")
+        agent.agent_card = _test_agent_card()
         context = MagicMock(spec=RequestContext)
         context.task_id = "task-9"
         context.context_id = "context-8"
@@ -1170,6 +1239,7 @@ workflows:
         context.get_user_input.return_value = json.dumps(
             {
                 "user_id": "forged-user",
+                "skill_id": "test_skill",
                 "prompt": "token=hidden",
                 "api_key": "also-hidden",
                 "nested": {"password": "hidden-too"},
@@ -1190,9 +1260,10 @@ workflows:
         assert observed["params"]["user_id"] == "verified-user"
         item = observed["item"]
         assert item.name == (
-            "Agent Record Agent executed task_task-9 by verified-user at "
-            f"{item.properties['created_at']}"
+            "'Record Agent' executed skill 'Test Skill' by 'verified-user' at "
+            f"'{item.properties['created_at']}'"
         )
+        assert item.description == "Execution record for task task-9"
         assert item.original_id == "prometheus-execution:record-agent:task-9"
         assert item.tags is None
         assert "schema" not in item.properties
@@ -1214,6 +1285,74 @@ workflows:
         assert item.properties["created_at"].endswith("+00:00")
         assert observed["config"].organization_id == 11
 
+    @pytest.mark.parametrize(
+        ("skill_id", "expected"),
+        [
+            ("unknown_skill", "'Record Agent' executed skill 'unknown_skill' by 'local' at 'now'"),
+            (None, "'Record Agent' execution by 'local' at 'now'"),
+            ("", "'Record Agent' execution by 'local' at 'now'"),
+            ("   ", "'Record Agent' execution by 'local' at 'now'"),
+        ],
+    )
+    def test_execution_record_name_fallbacks(self, skill_id, expected):
+        agent = PrometheusAgent(agent_name="Record Agent")
+
+        assert (
+            agent._build_execution_record_name(
+                {"skill_id": skill_id},
+                user_id="local",
+                created_at="now",
+            )
+            == expected
+        )
+
+    def test_execution_record_name_without_skill(self):
+        agent = PrometheusAgent(agent_name="Record Agent")
+
+        assert agent._build_execution_record_name({}, user_id="local", created_at="now") == (
+            "'Record Agent' execution by 'local' at 'now'"
+        )
+
+    def test_execution_record_name_uses_skill_id_when_card_name_is_blank(self):
+        agent = PrometheusAgent(agent_name="Record Agent")
+        agent.agent_card = SimpleNamespace(
+            skills=[
+                SimpleNamespace(id="other_skill", name="Other Skill"),
+                SimpleNamespace(id="blank_name", name="   "),
+            ]
+        )
+
+        assert (
+            agent._build_execution_record_name(
+                {"skill_id": "blank_name"},
+                user_id="local",
+                created_at="now",
+            )
+            == "'Record Agent' executed skill 'blank_name' by 'local' at 'now'"
+        )
+
+    @pytest.mark.parametrize(
+        ("limit", "expected"),
+        [(-1, ""), (0, ""), (1, "…")],
+    )
+    def test_truncate_execution_record_name_boundary_limits(self, limit, expected):
+        assert PrometheusAgent._truncate_name_value("long", limit) == expected
+
+    async def test_create_execution_record_requires_verified_identity(self):
+        agent = PrometheusAgent(agent_name="Record Agent")
+        agent.get_credential = AsyncMock()
+        context = MagicMock(spec=RequestContext)
+
+        with identity_scope(None):
+            with pytest.raises(
+                RuntimeError,
+                match="Execution records require a verified request identity",
+            ):
+                async with agent._create_execution_record({}, context):
+                    pytest.fail("Execution scope should not be entered")
+
+        agent.get_credential.assert_not_awaited()
+
     async def test_execution_record_name_is_less_than_500_characters(self, execution_storage):
         class Agent(PrometheusAgent):
             async def _execute(self, params, context, event_queue):
@@ -1225,14 +1364,16 @@ workflows:
         context.context_id = "context-long-name"
         context.current_task = None
         context.message = None
-        context.get_user_input.return_value = "{}"
+        context.get_user_input.return_value = json.dumps({"skill_id": "S" * 600})
 
         await agent.create_executor().execute(context, AsyncMock(spec=EventQueue))
 
         item = execution_storage[0]
         assert len(item.name) == 499
-        assert item.name.startswith("local_")
-        assert item.name.endswith(f"_task-long-name_{item.properties['created_at']}")
+        assert item.name.startswith("'" + "A" * 100)
+        assert "task-long-name" not in item.name
+        assert "…' executed skill '" in item.name
+        assert item.name.endswith(f"' by 'local' at '{item.properties['created_at']}'")
 
     def test_execution_record_failure_prevents_work_and_execute(self, monkeypatch):
         """Covers REQ-009-20 and BEH-009-07."""
@@ -1267,6 +1408,26 @@ workflows:
         ]
         assert TaskState.TASK_STATE_WORKING not in states
         assert states[-1] == TaskState.TASK_STATE_FAILED
+        assert agent.execution_record_id is None
+
+    async def test_execution_record_id_resets_when_execute_raises(self, execution_storage):
+        class Agent(PrometheusAgent):
+            async def _execute(self, params, context, event_queue):
+                assert self.execution_record_id == 1
+                raise RuntimeError("agent failed")
+
+        agent = Agent(agent_name="Failing Agent")
+        context = MagicMock(spec=RequestContext)
+        context.task_id = "task-failing"
+        context.context_id = "context-failing"
+        context.current_task = None
+        context.message = None
+        context.get_user_input.return_value = "{}"
+
+        with pytest.raises(RuntimeError, match="agent failed"):
+            await agent.create_executor().execute(context, AsyncMock(spec=EventQueue))
+
+        assert len(execution_storage) == 1
         assert agent.execution_record_id is None
 
     async def test_execution_record_context_is_concurrency_safe(self, monkeypatch):
