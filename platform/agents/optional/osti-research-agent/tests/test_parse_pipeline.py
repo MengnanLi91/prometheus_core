@@ -18,6 +18,7 @@ The docling subprocess is monkeypatched out - these test the ladder's control
 flow, not docling itself (that's the @slow golden corpus)."""
 
 import asyncio
+import os
 import io
 import tarfile
 from pathlib import Path
@@ -99,7 +100,10 @@ class FakeArtifactCache:
 def test_pipeline_falls_back_to_pymupdf(tmp_path, monkeypatch):
     config = AgentConfig(litellm_base_url="http://unused", workdir=tmp_path)
     monkeypatch.setattr(pp, "_precheck", lambda p: (3, 500))
-    monkeypatch.setattr(pp, "_run_docling_worker_sync", lambda *a, **k: None)
+    async def no_worker(*a, **k):
+        return None
+
+    monkeypatch.setattr(pp, "_run_docling_worker", no_worker)
     from research_agent import pdf_convert
 
     monkeypatch.setattr(
@@ -121,7 +125,7 @@ def test_pipeline_artifact_cache_roundtrip(tmp_path, monkeypatch):
     cache = FakeArtifactCache()
     calls = []
 
-    def fake_worker(pdf_path, outdir, options, timeout):
+    async def fake_worker(pdf_path, outdir, options, timeout):
         calls.append(1)
         outdir = Path(outdir)
         outdir.mkdir(parents=True, exist_ok=True)
@@ -133,7 +137,7 @@ def test_pipeline_artifact_cache_roundtrip(tmp_path, monkeypatch):
         return parsed
 
     monkeypatch.setattr(pp, "_precheck", lambda p: (2, 500))
-    monkeypatch.setattr(pp, "_run_docling_worker_sync", fake_worker)
+    monkeypatch.setattr(pp, "_run_docling_worker", fake_worker)
 
     p1 = asyncio.run(pp.parse_paper_pipeline("d.pdf", "77", config, caches=cache))
     p2 = asyncio.run(pp.parse_paper_pipeline("d.pdf", "77", config, caches=cache))
@@ -141,3 +145,66 @@ def test_pipeline_artifact_cache_roundtrip(tmp_path, monkeypatch):
     assert len(calls) == 1  # second call served entirely from the artifact cache
     assert p1.source_id == p2.source_id == "77"
     assert "77" in cache.blobs
+
+
+def _slow_worker(monkeypatch, tmp_path):
+    """Swap the worker module for a script that records its pid and sleeps."""
+    pid_file = tmp_path / "pid"
+    script = tmp_path / "slow.py"
+    script.write_text(
+        "import os, time\n"
+        f"open({str(pid_file)!r}, 'w').write(str(os.getpid()))\n"
+        "time.sleep(60)\n"
+    )
+    real_exec = asyncio.create_subprocess_exec
+
+    async def fake_exec(python, *_args, **kwargs):
+        return await real_exec(python, str(script), **kwargs)
+
+    monkeypatch.setattr(pp.asyncio, "create_subprocess_exec", fake_exec)
+    return pid_file
+
+
+def _alive(pid):
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    return True
+
+
+async def _wait_for_pid(pid_file):
+    for _ in range(200):
+        if pid_file.exists() and pid_file.read_text():
+            return int(pid_file.read_text())
+        await asyncio.sleep(0.05)
+    raise AssertionError("worker never started")
+
+
+def test_docling_worker_killed_when_parse_is_cancelled(tmp_path, monkeypatch):
+    pid_file = _slow_worker(monkeypatch, tmp_path)
+
+    async def go():
+        task = asyncio.create_task(
+            pp._run_docling_worker("x.pdf", tmp_path / "out", {}, timeout=60)
+        )
+        pid = await _wait_for_pid(pid_file)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        return pid
+
+    assert not _alive(asyncio.run(go()))
+
+
+def test_docling_worker_killed_on_timeout(tmp_path, monkeypatch):
+    pid_file = _slow_worker(monkeypatch, tmp_path)
+
+    result = asyncio.run(
+        pp._run_docling_worker("x.pdf", tmp_path / "out", {}, timeout=1)
+    )
+
+    assert result is None
+    assert not _alive(int(pid_file.read_text()))

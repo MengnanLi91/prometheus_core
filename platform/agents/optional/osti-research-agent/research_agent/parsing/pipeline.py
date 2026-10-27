@@ -27,7 +27,6 @@ import asyncio
 import io
 import logging
 import os
-import subprocess
 import sys
 import tarfile
 import tempfile
@@ -101,9 +100,14 @@ def _package_root() -> str:
     return str(Path(research_agent.__file__).resolve().parents[1])
 
 
-def _run_docling_worker_sync(
+async def _run_docling_worker(
     pdf_path: str, outdir: Path, options: dict, timeout: int
 ) -> Optional[ParsedPaper]:
+    """Run the docling worker as a child process with a hard timeout.
+
+    Async (not ``subprocess.run`` in a thread) so that cancelling the parse -
+    the runner does this when the outer time budget fires - kills the child
+    instead of leaving it burning CPU until its own timeout."""
     root = _package_root()
     with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
         import json as _json
@@ -125,31 +129,37 @@ def _run_docling_worker_sync(
         "PYTHONPATH": root + os.pathsep + os.environ.get("PYTHONPATH", ""),
     }
     try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            cwd=root,
-            env=env,
-        )
-    except subprocess.TimeoutExpired:
-        logger.error("[parse] docling worker timed out after %ss", timeout)
-        return None
-    except Exception as e:
-        logger.error("[parse] docling worker failed to launch: %s", e)
-        return None
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=root,
+                env=env,
+            )
+        except Exception as e:
+            logger.error("[parse] docling worker failed to launch: %s", e)
+            return None
+        try:
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout)
+        except asyncio.TimeoutError:
+            await _kill(proc)
+            logger.error("[parse] docling worker timed out after %ss", timeout)
+            return None
+        except asyncio.CancelledError:
+            await _kill(proc)
+            raise
     finally:
         try:
             os.unlink(options_path)
         except OSError:
             pass
 
-    if result.returncode != 0:
+    if proc.returncode != 0:
         logger.error(
             "[parse] docling worker exited %s: %s",
-            result.returncode,
-            result.stderr[-500:],
+            proc.returncode,
+            stderr.decode(errors="replace")[-500:],
         )
         return None
     try:
@@ -157,10 +167,16 @@ def _run_docling_worker_sync(
         return ParsedPaper.load(outdir)
     except Exception:
         try:
-            return ParsedPaper.model_validate_json(result.stdout)
+            return ParsedPaper.model_validate_json(stdout.decode(errors="replace"))
         except Exception as e:
             logger.error("[parse] could not read worker output: %s", e)
             return None
+
+
+async def _kill(proc: asyncio.subprocess.Process) -> None:
+    if proc.returncode is None:
+        proc.kill()
+        await proc.wait()
 
 
 def _pymupdf_fallback(
@@ -246,8 +262,8 @@ async def parse_paper_pipeline(
         "source_id": source_id,
         "min_figure_area": config.min_figure_area,
     }
-    parsed = await asyncio.to_thread(
-        _run_docling_worker_sync, pdf_path, out, options, config.docling_timeout_s
+    parsed = await _run_docling_worker(
+        pdf_path, out, options, config.docling_timeout_s
     )
 
     if parsed is None:
