@@ -9,34 +9,54 @@ compared against the `pipeline` baseline.
 
 | File | What |
 |------|------|
-| `questions.yaml` | 20 questions (core / scholarly / web / cache / adversarial) with optional expectations |
+| `questions.yaml` | 51 questions (core / scholarly / web / cache / adversarial) with optional expectations |
 | `run.py` | runs each question through each engine, writes transcripts, scores |
 | `scoring.py` | pure, offline metrics (unit-tested in `tests/test_eval_scoring.py`) |
+| `report.py` | terminal summary and Markdown report (unit-tested in `tests/test_eval_report.py`) |
+| `__main__.py` | the `python -m evals {run,report}` CLI |
 
 ## Running
 
-Needs LiteLLM creds in the env (`REGISTRY_URL` / `LITELLM_MASTER_KEY`), network
-for OSTI/OpenAlex/arXiv, and — for the two `cache` questions to actually hit
-memory — a live Redis (`REDIS_URL`).
+The evaluation runs inside the agent's container, which already has the
+agent's model profile, credentials, Redis and Docling. From `platform/`:
 
 ```
-uv run python -m evals.run --engines pipeline deepagent \
-  --redis-db-base 14 --report evals/report.json
+make up OPTIONAL_AGENTS=true          # once: start the stack with the OSTI agent
+make osti-eval                        # default: deepagent, first 3 questions
+make osti-eval OSTI_EVAL_ARGS="--engines deepagent --category uq"
+make osti-eval OSTI_EVAL_ARGS="--engines pipeline deepagent --redis-db-base 14"
+make osti-eval-report                 # re-print the latest report
 ```
 
-Useful flags: `--limit N` (first N questions), `--no-redis` (rule out cache),
-`--questions <path>`, `--workdir <dir>` (default `evals/out`). For LangSmith
-traces, set `LANGCHAIN_TRACING_V2=true` + `LANGCHAIN_API_KEY` first — the deep
-engine's `astream` is already instrumented.
+`make osti-eval` prints a summary when it finishes (per-engine pass counts,
+medians, p90 time, and each failing question with the reason) and copies the
+results to `evals/results/osti-eval-<timestamp>/` on the host:
+`report.md` (summary, failures, every question, links to transcripts),
+`report.json`, and `out/{engine}/{qid}/` with each `result.json` and
+`progress.log`. The report is rewritten after every question, so a run that
+stops early still leaves a partial report (`"complete": false`).
 
-Multi-engine runs require `--redis-db-base N`. The harness assigns database
-`N` to the first engine and `N+1` to the second, and refuses to run if either
-database already contains keys. Reserve two empty databases for the gate; the
-harness never clears Redis, so historical keys are not deleted.
+`OSTI_EVAL_ARGS` takes any `python -m evals run` option:
 
-Output: `evals/report.json` (per-question records + per-engine aggregate) and,
-under `evals/out/{engine}/{qid}/`, a `result.json` + `progress.log` per run for
-the manual spot-check.
+| Option | Use |
+|--------|-----|
+| `--engines deepagent` | engines to run; the default is both `pipeline deepagent` |
+| `--limit N` | only the first N selected questions |
+| `--id <qid>` | only this question; repeatable |
+| `--category <name>` | only this category (`core`, `uq`, `adversarial`, ...); repeatable |
+| `--redis-db-base N` | required for more than one engine: engine 1 uses Redis database N, engine 2 uses N+1; refuses non-empty databases and never clears Redis |
+| `--no-redis` | run without Redis (the `cache` questions cannot hit the cache) |
+| `--questions <path>` | another question file |
+
+Each question can take up to `TOTAL_BUDGET_S` (900 s by default) and they run
+one at a time, so the full 51-question set on one engine takes hours. Start
+with a filter. Rebuild the image after editing `questions.yaml` or anything
+under `evals/` (`make up OPTIONAL_AGENTS=true`): the container runs the copy
+baked into it.
+
+For LangSmith traces, set `LANGCHAIN_TRACING_V2=true` + `LANGCHAIN_API_KEY` in
+the agent's environment first — the deep engine's `astream` is already
+instrumented.
 
 ## Scoring
 

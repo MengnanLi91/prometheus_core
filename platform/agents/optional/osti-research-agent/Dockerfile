@@ -23,6 +23,8 @@ RUN --mount=type=cache,id=prometheus-uv-cache,target=/root/.cache/uv,sharing=loc
 COPY agent.py /app/agent.py
 COPY agent_card.json /app/agent_card.json
 COPY research_agent /app/research_agent
+# The evaluation harness runs in this container: `make osti-eval`.
+COPY evals /app/evals
 
 EXPOSE 8000
 

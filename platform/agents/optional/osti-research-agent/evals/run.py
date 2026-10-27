@@ -39,11 +39,13 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from datetime import datetime, timezone
+from typing import Any, Callable, Dict, List, Optional
 
 import redis
 import yaml
 
+from evals import report as render
 from evals import scoring
 from research_agent.core.config import AgentConfig
 from research_agent.core.events import FinalResult, ProgressEvent
@@ -56,6 +58,28 @@ def _load_questions(path: Path) -> List[Dict[str, Any]]:
     questions = data.get("questions", []) if isinstance(data, dict) else data
     if not questions:
         raise SystemExit(f"no questions found in {path}")
+    return questions
+
+
+def _select_questions(
+    questions: List[Dict[str, Any]],
+    ids: Optional[List[str]],
+    categories: Optional[List[str]],
+    limit: Optional[int],
+) -> List[Dict[str, Any]]:
+    """Filter by id and category (both optional), then apply --limit."""
+    if ids:
+        known = {str(q.get("id")) for q in questions}
+        unknown = [i for i in ids if i not in known]
+        if unknown:
+            raise SystemExit(f"unknown question id(s): {', '.join(unknown)}")
+        questions = [q for q in questions if str(q.get("id")) in ids]
+    if categories:
+        questions = [q for q in questions if q.get("category") in categories]
+    if limit:
+        questions = questions[:limit]
+    if not questions:
+        raise SystemExit("no questions match the given filters")
     return questions
 
 
@@ -123,6 +147,7 @@ async def _run_engine(
     base: AgentConfig,
     workdir: Path,
     redis_db: Optional[int],
+    on_record: Optional[Callable[[Dict[str, Any]], Any]] = None,
 ) -> List[Dict[str, Any]]:
     updates: Dict[str, Any] = {"engine": engine, "workdir": workdir / engine}
     if redis_db is not None:
@@ -132,9 +157,12 @@ async def _run_engine(
         _require_empty_redis(config, engine)
 
     records: List[Dict[str, Any]] = []
-    for spec in questions:
+    for number, spec in enumerate(questions, 1):
         qid = spec["id"]
-        print(f"[{engine}] {qid}: {spec['question']}", file=sys.stderr)
+        print(
+            f"[{engine} {number}/{len(questions)}] {qid}: {spec['question']}",
+            file=sys.stderr,
+        )
         final, wall_s, log = await _run_one(
             config, spec["question"], f"eval-{engine}-{qid}"
         )
@@ -159,6 +187,8 @@ async def _run_engine(
             file=sys.stderr,
         )
         records.append(record)
+        if on_record is not None:
+            on_record(record)
     return records
 
 
@@ -170,6 +200,25 @@ async def _main(argv: List[str]) -> int:
     parser.add_argument("--report", default="evals/report.json")
     parser.add_argument(
         "--limit", type=int, default=None, help="only the first N questions"
+    )
+    parser.add_argument(
+        "--id",
+        dest="ids",
+        action="append",
+        default=None,
+        help="only this question id (repeatable)",
+    )
+    parser.add_argument(
+        "--category",
+        dest="categories",
+        action="append",
+        default=None,
+        help="only questions in this category (repeatable), e.g. core, uq",
+    )
+    parser.add_argument(
+        "--markdown",
+        default=None,
+        help="Markdown report path (default: report.json's path with .md)",
     )
     parser.add_argument("--no-redis", action="store_true")
     parser.add_argument(
@@ -183,9 +232,9 @@ async def _main(argv: List[str]) -> int:
     )
     args = parser.parse_args(argv)
 
-    questions = _load_questions(Path(args.questions))
-    if args.limit:
-        questions = questions[: args.limit]
+    questions = _select_questions(
+        _load_questions(Path(args.questions)), args.ids, args.categories, args.limit
+    )
 
     base = _load_agent_config()
     if args.no_redis:
@@ -203,28 +252,56 @@ async def _main(argv: List[str]) -> int:
         parser.error("--redis-db-base must be non-negative")
     workdir = Path(args.workdir)
 
+    report_path = Path(args.report)
+    markdown_path = Path(args.markdown) if args.markdown else report_path.with_suffix(".md")
+    started_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    question_text = {str(q["id"]): str(q.get("question", "")) for q in questions}
     all_records: List[Dict[str, Any]] = []
-    for index, engine in enumerate(args.engines):
-        redis_db = (
-            args.redis_db_base + index if args.redis_db_base is not None else None
-        )
-        all_records.extend(
-            await _run_engine(engine, questions, base, workdir, redis_db)
-        )
 
-    report = {
-        "questions": len(questions),
-        "engines": args.engines,
-        "redis_db_base": args.redis_db_base,
-        "records": all_records,
-        "aggregate": scoring.aggregate(all_records),
-    }
-    Path(args.report).write_text(json.dumps(report, indent=2, default=str))
-    print(json.dumps(report["aggregate"], indent=2))
-    print(f"\nWrote {args.report} and transcripts under {workdir}/", file=sys.stderr)
+    def write_reports(complete: bool) -> Dict[str, Any]:
+        report = {
+            "questions": len(questions),
+            "engines": args.engines,
+            "redis_db_base": args.redis_db_base,
+            "started_at": started_at,
+            "complete": complete,
+            "records": all_records,
+            "aggregate": scoring.aggregate(all_records),
+        }
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(json.dumps(report, indent=2, default=str))
+        markdown_path.parent.mkdir(parents=True, exist_ok=True)
+        markdown_path.write_text(
+            render.markdown_report(
+                report,
+                transcripts_dir=os.path.relpath(workdir, markdown_path.parent),
+                questions=question_text,
+            )
+        )
+        return report
+
+    def on_record(record: Dict[str, Any]) -> None:
+        # Rewritten after every question so a long run that dies keeps its results.
+        all_records.append(record)
+        write_reports(complete=False)
+
+    try:
+        for index, engine in enumerate(args.engines):
+            redis_db = (
+                args.redis_db_base + index if args.redis_db_base is not None else None
+            )
+            await _run_engine(
+                engine, questions, base, workdir, redis_db, on_record=on_record
+            )
+    except KeyboardInterrupt:
+        print("\nInterrupted; writing the partial report.", file=sys.stderr)
+        write_reports(complete=False)
+        raise
+
+    report = write_reports(complete=True)
+    print(render.terminal_summary(report))
     print(
-        "Next: LLM-judged groundedness/completeness and a manual spot-check of 5 "
-        "transcripts (see evals/README.md).",
+        f"\nWrote {report_path}, {markdown_path} and transcripts under {workdir}/",
         file=sys.stderr,
     )
     return 0
