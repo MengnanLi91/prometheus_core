@@ -435,10 +435,12 @@ def inject_tool_call(
         }
     )
     state["pending_note"] = note
+    # The arguments are the user's form answers, so credit them to the user.
     call = _new_call(
         {"id": call_id, "name": spec.name, "arguments": arguments, "arguments_error": None},
         catalog,
         state,
+        source="user",
     )
     if workflow_version:
         call["workflow_version"] = workflow_version
@@ -634,6 +636,8 @@ def _new_call(
     tool_call: Dict[str, Any],
     catalog: Mapping[str, ToolSpec],
     state: Dict[str, Any],
+    *,
+    source: str = "model",
 ) -> Dict[str, Any]:
     name = str(tool_call.get("name") or "")
     spec = catalog.get(name)
@@ -666,7 +670,7 @@ def _new_call(
     if problem:
         _finish(call, {"status": "failed", "error": problem})
         return call
-    call["input_sources"] = {key: "model" for key in call["arguments"]}
+    call["input_sources"] = {key: source for key in call["arguments"]}
     _refresh_status(call, spec)
     return call
 

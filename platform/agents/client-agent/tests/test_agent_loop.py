@@ -1420,6 +1420,8 @@ def test_resumed_workflow_continues_without_rerunning_finished_steps(harness, mo
     assert [skill for skill, _ in harness.invocations] == ["create_svg_artifact", "analyze_thermal", "analyze_thermal"]
     resumed = harness.invocations[-1][1]
     assert (resumed["_a2a_task_id"], resumed["units"]) == ("task-thermal", "SI")
+    # The workflow-start form answers are the user's, not the model's.
+    assert resumed["_input_sources"] == {"material_id": "user", "word": "user", "units": "user"}
     assert [a["artifact_id"] for a in harness.store[CONV]["context"]["artifacts"]] == ["svg-1"]
     # Each step records the inputs it was actually given.
     report = harness.store[CONV]["conversation_history"][-1]
