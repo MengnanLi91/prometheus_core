@@ -15,7 +15,7 @@
 This example demonstrates:
 - transient status updates
 - durable conversation messages
-- per-context state persistence
+- INPUT_REQUIRED answers merged into params on resume
 - INPUT_REQUIRED follow-ups
 - fetching upstream data through a reusable client
 - URI-backed and inline JSON artifacts

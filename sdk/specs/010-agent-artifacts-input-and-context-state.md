@@ -10,7 +10,7 @@ Let agents request missing structured input, persist per-conversation state, pub
 ## Requirements
 - REQ-010-01: `MissingInput` and `build_input_required_payload(...)` MUST serialize missing input descriptors under `missing_inputs` and include a stripped `hint`.
 - REQ-010-02: `send_input_required(...)` MUST emit a final `input_required` status whose message part is a JSON `DataPart` with canonical missing-input payload.
-- REQ-010-03: `get_input_sources(...)` MUST return the `inputSources` message-metadata map (parameter name → `"model"`, `"user"`, or `"context"`) as strings, and `{}` when the message or the map is missing. Late-supplied inputs (INPUT_REQUIRED answers, context fills) MUST arrive in `params`; there is no separate provided-inputs channel. (Reworded 2026-10-20; `get_provided_inputs(...)` was removed in 0.14.1.)
+- REQ-010-03: `get_input_sources(...)` MUST return the `inputSources` message-metadata map (parameter name → `"model"`, `"user"`, or `"context"`) as strings, and `{}` when the message or the map is missing.
 - REQ-010-04: `load_context_state(...)` and `save_context_state(...)` MUST scope state by normalized producer agent ID and A2A `context_id`.
 - REQ-010-05: `ContextStateStore.load(...)` MUST return `{}` for blank IDs, missing state, corrupt JSON, or non-dict payloads; `save(...)` MUST reject blank agent/context IDs.
 - REQ-010-06: `ArtifactReference` MUST serialize to/from a normalized JSON-compatible dict and MUST normalize native A2A file, data, and text artifact payloads.
@@ -24,6 +24,7 @@ Let agents request missing structured input, persist per-conversation state, pub
 - REQ-010-14: `send_conversation_message(...)` MUST emit a JSON artifact named `conversation_message` with metadata `kind=conversation_message`.
 - REQ-010-15: `get_artifact_file_path(...)` MUST require a conversation ID or context, resolve from registry or provided artifact catalog, and cache provided catalog entries when possible.
 - REQ-010-16: Artifact resolution MUST materialize inline JSON/text to cache files, download non-local URI artifacts through `fsspec`, and validate local `file://` or absolute paths against allowed roots.
+- REQ-010-17: Late-supplied inputs (INPUT_REQUIRED answers, context fills) MUST arrive in `params` together with every original argument; there is no separate provided-inputs channel. ⚠ untested
 
 ## Behavior
 - BEH-010-01: GIVEN `send_input_required(...)` is called WHEN the event is inspected THEN its status is final `input_required` and the missing input is in a `DataPart`.

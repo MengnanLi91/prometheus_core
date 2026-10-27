@@ -690,7 +690,7 @@ workflows:
                 ParseDict(payload, AgentCard())
 
     def test_get_input_sources_reads_message_metadata(self):
-        # REQ-010-03: sources come from metadata.inputSources; inputs themselves are params.
+        # REQ-010-03: sources come from metadata.inputSources.
         from a2a.types import Message
 
         message = Message(message_id="m1")
