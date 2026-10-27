@@ -25,10 +25,22 @@ agent's model profile, credentials, Redis and Docling. From `platform/`:
 ```
 make up OPTIONAL_AGENTS=true          # once: start the stack with the OSTI agent
 make osti-eval                        # default: deepagent, first 3 questions
-make osti-eval OSTI_EVAL_ARGS="--engines deepagent --category uq"
-make osti-eval OSTI_EVAL_ARGS="--engines pipeline deepagent --redis-db-base 14"
+make osti-eval OSTI_EVAL_LIMIT=10     # first 10 questions
+make osti-eval OSTI_EVAL_LIMIT=       # every question (51; takes hours)
+make osti-eval OSTI_EVAL_LIMIT= OSTI_EVAL_ARGS="--category uq"
+make osti-eval OSTI_EVAL_ENGINES="pipeline deepagent" OSTI_EVAL_ARGS="--redis-db-base 14"
 make osti-eval-report                 # re-print the latest report
 ```
+
+| Variable | Default | Use |
+|----------|---------|-----|
+| `OSTI_EVAL_LIMIT` | `3` | how many questions to run; empty runs every selected question |
+| `OSTI_EVAL_ENGINES` | `deepagent` | engines to run, e.g. `"pipeline deepagent"` |
+| `OSTI_EVAL_ARGS` | (none) | any other `python -m evals run` options (table below) |
+
+The limit applies after `--id`/`--category`: `OSTI_EVAL_LIMIT=5
+OSTI_EVAL_ARGS="--category uq"` runs the first 5 UQ questions. Any of the
+variables can also be set in the environment (`export OSTI_EVAL_LIMIT=10`).
 
 While it runs, a progress bar on the terminal shows questions done, percent,
 the current engine and question, elapsed time, an ETA (from the average time
@@ -49,12 +61,12 @@ Press Ctrl+C to stop a run: it finishes cleanly (exit code 130), prints the
 summary of the questions already done, and `make osti-eval` still copies the
 partial results back.
 
-`OSTI_EVAL_ARGS` takes any `python -m evals run` option:
+`OSTI_EVAL_ARGS` takes any other `python -m evals run` option. (Run
+directly, `python -m evals run` takes `--engines` and `--limit` too; its own
+default is both engines and no limit.)
 
 | Option | Use |
 |--------|-----|
-| `--engines deepagent` | engines to run; the default is both `pipeline deepagent` |
-| `--limit N` | only the first N selected questions |
 | `--id <qid>` | only this question; repeatable |
 | `--category <name>` | only this category (`core`, `uq`, `adversarial`, ...); repeatable |
 | `--redis-db-base N` | required for more than one engine: engine 1 uses Redis database N, engine 2 uses N+1; refuses non-empty databases and never clears Redis |
