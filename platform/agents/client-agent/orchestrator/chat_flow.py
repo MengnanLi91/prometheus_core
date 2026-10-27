@@ -299,17 +299,12 @@ async def chat(request: ConversationRequest) -> ConversationResponse:
                     selection_source=request.selection_source or ("slash_command" if workflow_slash else None),
                 )
         elif request.followup_answers and has_pending:
-            sensitive = agent_loop.sensitive_fields(state)
             _append_history(
                 state,
                 {
                     "role": "user",
                     "content": request.query or "Provided requested inputs.",
-                    "provided_inputs": {
-                        name: copy.deepcopy(value)
-                        for name, value in request.followup_answers.items()
-                        if name not in sensitive
-                    },
+                    "provided_inputs": copy.deepcopy(dict(request.followup_answers)),
                 },
             )
             agent_loop.apply_answers(state, catalog, request.followup_answers)
