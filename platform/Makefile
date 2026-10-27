@@ -353,6 +353,7 @@ osti-eval: ##@ Run the OSTI agent evaluation in its container and print the repo
 		{ echo "$(OSTI_EVAL_CONTAINER) is not running; start it with: make up OPTIONAL_AGENTS=true"; exit 1; }
 	@run_dir=/tmp/osti-eval-$$(date +%Y%m%d-%H%M%S); \
 	status=0; \
+	trap '' INT; \
 	docker exec -it -w /app $(OSTI_EVAL_CONTAINER) python -m evals run \
 		--report $$run_dir/report.json --workdir $$run_dir/out $(OSTI_EVAL_ARGS) || status=$$?; \
 	mkdir -p $(OSTI_EVAL_OUT); \

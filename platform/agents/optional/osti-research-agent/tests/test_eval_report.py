@@ -166,3 +166,64 @@ def test_markdown_escapes_table_breaking_text():
 
     assert "## Failures (0)" in markdown and "Every question passed" in markdown
     assert render._md_cell("a | b\nc") == "a \\| b c"
+
+
+_SLOW_RUN = """
+import asyncio, sys
+sys.path.insert(0, sys.argv[1])
+from research_agent.core.config import AgentConfig
+from research_agent.core.events import FinalResult
+from evals import run
+
+run._load_agent_config = lambda: AgentConfig(litellm_base_url="http://u")
+
+class Runner:
+    def __init__(self, config):
+        pass
+
+    async def run(self, question, *, run_id):
+        if "unobtainium" in question:
+            print("STARTED-SECOND", flush=True)
+            await asyncio.sleep(60)
+        yield FinalResult(status="completed", question=question, answer="a (Paper 1)",
+                          provenance=[{"source": "OSTI #1"}])
+
+run.ResearchRunner = Runner
+sys.exit(run.main(sys.argv[2:]))
+"""
+
+
+def test_ctrl_c_writes_a_partial_report_and_exits_without_a_traceback(tmp_path):
+    import os
+    import signal
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    agent_dir = Path(__file__).resolve().parents[1]
+    script = tmp_path / "slow_run.py"
+    script.write_text(_SLOW_RUN)
+    questions = tmp_path / "questions.yaml"
+    questions.write_text(QUESTIONS)
+    report_path = tmp_path / "r" / "report.json"
+    proc = subprocess.Popen(
+        [sys.executable, str(script), str(agent_dir), "--questions", str(questions),
+         "--engines", "deepagent", "--no-redis", "--no-judge",
+         "--report", str(report_path), "--workdir", str(tmp_path / "r" / "out")],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+    )
+    try:
+        assert proc.stdout.readline().strip() == "STARTED-SECOND"
+        os.kill(proc.pid, signal.SIGINT)
+        out, err = proc.communicate(timeout=30)
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+
+    assert proc.returncode == eval_run.INTERRUPTED_EXIT
+    assert "Traceback" not in err
+    assert "Interrupted after 1 of 3 question(s)." in err
+    assert "OSTI evaluation: 3 question(s)" in out
+    partial = json.loads(report_path.read_text())
+    assert partial["complete"] is False
+    assert [r["id"] for r in partial["records"]] == ["ss316-creep"]

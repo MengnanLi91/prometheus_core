@@ -354,9 +354,18 @@ async def _main(argv: List[str]) -> int:
                     judge_complete=judge_complete,
                 )
     except (KeyboardInterrupt, asyncio.CancelledError):
-        print("\nInterrupted; writing the partial report.", file=sys.stderr)
-        write_reports(complete=False)
-        raise
+        # Ctrl+C: asyncio.run cancels this task. Keep what finished and stop
+        # cleanly instead of re-raising into a traceback.
+        report = write_reports(complete=False)
+        print(
+            f"\nInterrupted after {len(all_records)} of "
+            f"{len(questions) * len(args.engines)} question(s).",
+            file=sys.stderr,
+        )
+        if all_records:
+            print(render.terminal_summary(report))
+        print(f"\nPartial report: {report_path}, {markdown_path}", file=sys.stderr)
+        return INTERRUPTED_EXIT
     finally:
         root_logger.handlers = previous_handlers
         root_logger.setLevel(previous_level)
@@ -370,8 +379,17 @@ async def _main(argv: List[str]) -> int:
     return 0
 
 
+# The shell's exit code for a process stopped by Ctrl+C (128 + SIGINT).
+INTERRUPTED_EXIT = 130
+
+
 def main(argv: Optional[List[str]] = None) -> int:
-    return asyncio.run(_main(argv if argv is not None else sys.argv[1:]))
+    try:
+        return asyncio.run(_main(argv if argv is not None else sys.argv[1:]))
+    except KeyboardInterrupt:
+        # A second Ctrl+C while the partial report is being written.
+        print("\nInterrupted.", file=sys.stderr)
+        return INTERRUPTED_EXIT
 
 
 if __name__ == "__main__":

@@ -45,6 +45,9 @@ results to `evals/results/osti-eval-<timestamp>/` on the host:
 `report.json`, and `out/{engine}/{qid}/` with each `result.json` and
 `progress.log`. The report is rewritten after every question, so a run that
 stops early still leaves a partial report (`"complete": false`).
+Press Ctrl+C to stop a run: it finishes cleanly (exit code 130), prints the
+summary of the questions already done, and `make osti-eval` still copies the
+partial results back.
 
 `OSTI_EVAL_ARGS` takes any `python -m evals run` option:
 
