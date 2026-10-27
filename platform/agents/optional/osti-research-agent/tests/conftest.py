@@ -19,6 +19,23 @@ pytest invocation directory.
 import sys
 from pathlib import Path
 
+import pytest
+
 AGENT_DIR = Path(__file__).resolve().parents[1]
 if str(AGENT_DIR) not in sys.path:
     sys.path.insert(0, str(AGENT_DIR))
+
+
+@pytest.fixture(autouse=True)
+def _no_network_synthesis(request, monkeypatch):
+    """Keep the graded synthesis from calling a real model in every test that
+    builds a final result; tests marked ``real_synthesis`` drive it with fake
+    chat models instead."""
+    if request.node.get_closest_marker("real_synthesis"):
+        return
+    from research_agent.core import synthesis
+
+    async def no_synthesis(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(synthesis, "synthesize", no_synthesis)

@@ -34,6 +34,7 @@ from typing import AsyncIterator, Dict, Iterator, List, Optional
 from langchain_core.messages import AIMessage, ToolMessage
 
 from research_agent import citations, llm_steps
+from research_agent.core import synthesis
 from research_agent.core.config import AgentConfig
 from research_agent.core.deep_agent import build_research_agent
 from research_agent.core.events import AgentEvent, FinalResult, Finding, ProgressEvent
@@ -219,7 +220,9 @@ async def build_final_result(
     provenance. Falls back to ``status="error"`` (keeping the raw text) if the
     final message isn't parseable JSON."""
     parsed = llm_steps.extract_json_from_text(final_text or "")
-    if not isinstance(parsed, dict) or "answer" not in parsed:
+    # The orchestrator now ends with {"findings": [...]}; "answer" is still
+    # accepted from older prompts. Neither key's content is used below.
+    if not isinstance(parsed, dict) or not ({"findings", "answer"} & set(parsed)):
         logger.warning("[deep] final message was not parseable result JSON")
         return FinalResult(
             status="error",
@@ -235,9 +238,12 @@ async def build_final_result(
     findings = list(ctx.findings)
     answers = _findings_to_answers(findings, ctx)
     if answers:
-        # Do not ask another model to paraphrase the findings: even a
-        # findings-only prompt can add unsupported domain knowledge.
-        answer_text = _render_grounded_answer(answers)
+        # A cross-paper synthesis is used only when its grader is satisfied
+        # and the code checks pass; otherwise render the findings verbatim.
+        synthesized = await synthesis.synthesize(
+            question, answers, ctx.config, seconds_left=ctx.seconds_left()
+        )
+        answer_text = synthesized or _render_grounded_answer(answers)
         status = "completed"
     elif ctx.verification_errors:
         answer_text = (
@@ -356,6 +362,10 @@ async def run_deep(
                 for event in translate_update(chunk, ctx):
                     yield event
 
+        if ctx.findings:
+            yield ProgressEvent(
+                message="Synthesizing across papers and checking it against the findings..."
+            )
         yield await build_final_result(question, final_text, ctx)
     finally:
         # Parsed papers are per-run scratch; durable state lives in Redis.

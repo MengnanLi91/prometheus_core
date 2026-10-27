@@ -398,3 +398,39 @@ def test_no_results_answer_is_not_cached(monkeypatch):
 
     assert final.status == "no_results"
     assert cached == []
+
+
+def _final_for_synthesis(monkeypatch, synthesized):
+    from research_agent.core import synthesis
+
+    async def no_followups(**kwargs):
+        return []
+
+    async def fake_synthesize(question, answers, config, *, seconds_left):
+        assert [a["osti_id"] for a in answers] == ["123"]
+        return synthesized
+
+    monkeypatch.setattr(llm_steps, "suggest_followup_queries", no_followups)
+    monkeypatch.setattr(synthesis, "synthesize", fake_synthesize)
+    context = deep_runner.RunContext(
+        config=_config(), complete=_fake_complete, question="q"
+    )
+    context.findings.append(
+        deep_runner.Finding(source_id="123", answer="a", evidence="Table 1 value")
+    )
+    final_text = json.dumps({"findings": [json.loads(_finding_json())]})
+    return asyncio.run(deep_runner.build_final_result("q", final_text, context))
+
+
+def test_graded_synthesis_becomes_the_linkified_answer(monkeypatch):
+    final = _final_for_synthesis(monkeypatch, "Ti creeps (Paper 1).")
+
+    assert final.status == "completed"
+    assert final.answer == "Ti creeps ([Paper 1](https://www.osti.gov/biblio/123))."
+
+
+def test_findings_only_final_message_falls_back_to_per_paper_answer(monkeypatch):
+    final = _final_for_synthesis(monkeypatch, None)
+
+    assert final.status == "completed"
+    assert "Table 1 value" in final.answer

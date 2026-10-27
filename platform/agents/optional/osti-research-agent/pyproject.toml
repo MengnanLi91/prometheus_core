@@ -55,6 +55,7 @@ explicit = true
 [tool.pytest.ini_options]
 markers = [
     "slow: slow tests (golden-corpus PDF parsing; needs fetched PDFs + model weights) - run in a nightly job, not the default suite",
+    "real_synthesis: run the graded synthesis instead of the no-op stub (tests drive it with fake chat models)",
 ]
 
 [tool.coverage.run]
