@@ -34,7 +34,10 @@ logger = logging.getLogger(__name__)
 def _convert_pdf_with_pymupdf(pdf_path: str) -> str:
     """Fast PDF text extraction using PyMuPDF (fitz)."""
     try:
-        import fitz  # PyMuPDF
+        try:
+            import pymupdf as fitz  # noqa: N813
+        except ImportError:
+            import fitz  # older PyMuPDF
 
         logger.info(f"[pymupdf] Opening PDF: {pdf_path}")
         logger.info(f"[pymupdf] PyMuPDF version: {fitz.version}")

@@ -87,7 +87,14 @@ GOOD = "Titanium creeps above 800 C (Paper 1), faster at 900 C (Paper 2)."
 
 def _run(monkeypatch, writer, grader, *, answers=ANSWERS, seconds_left=900):
     models = {"orchestrator": writer, "verifier": grader}
-    monkeypatch.setattr(synthesis, "chat_model", lambda config, role: models[role])
+    calls = []
+
+    def chat_model(config, role, **kwargs):
+        calls.append((role, kwargs))
+        return models[role]
+
+    monkeypatch.setattr(synthesis, "chat_model", chat_model)
+    _run.calls = calls
     config = AgentConfig(litellm_base_url="http://unused")
     return asyncio.run(
         synthesis.synthesize("Does Ti creep?", answers, config, seconds_left=seconds_left)
@@ -181,3 +188,12 @@ def test_rubric_middleware_contract_still_holds():
     assert rubric._MAX_TRANSCRIPT_CHARS_PER_MESSAGE >= 4000
     assert synthesis.MAX_ANSWER_CHARS < rubric._MAX_TRANSCRIPT_CHARS_PER_MESSAGE
     assert callable(rubric._build_grader_transcript)
+
+
+def test_grader_model_never_forces_a_tool_choice(monkeypatch):
+    grader = _FakeChat(responses=[_read_findings(), _grade("satisfied")])
+    writer = _FakeChat(responses=[AIMessage(content=GOOD)])
+    _run(monkeypatch, writer, grader)
+
+    assert ("verifier", {"forced_tool_choice": False}) in _run.calls
+    assert ("orchestrator", {}) in _run.calls

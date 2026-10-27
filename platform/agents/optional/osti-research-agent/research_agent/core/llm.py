@@ -42,6 +42,8 @@ EmbedFn = Callable[[str], Awaitable[List[float]]]
 def chat_model(
     config: "AgentConfig",
     role: Literal["orchestrator", "analyzer", "verifier", "vlm"],
+    *,
+    forced_tool_choice: bool = True,
 ) -> "BaseChatModel":
     """Build a LangChain chat model for the deep-agent engine.
 
@@ -49,16 +51,44 @@ def chat_model(
     profiles keep using their aliases through the local proxy; direct profiles
     use their configured provider endpoint, key, and model. Imported lazily so
     the pipeline engine and the CLI never pull in LangChain provider packages.
+
+    ``forced_tool_choice=False`` turns any forced tool choice ("any",
+    "required", or one named tool) into "auto" when tools are bound. Some
+    providers reject a forced choice outright - Claude on Bedrock answers
+    "tool_choice: type "tool" and "any" are not supported for this model" -
+    and LangChain's structured output (``create_agent(response_format=...)``)
+    always forces one.
     """
     from langchain_litellm import ChatLiteLLM
 
     route = config.model_route(role)
-    return ChatLiteLLM(
+    model_class = ChatLiteLLM if forced_tool_choice else _auto_tool_choice_class()
+    return model_class(
         api_base=route.base_url.rstrip("/"),
         api_key=route.api_key or "not-needed",
         model=route.model,
         custom_llm_provider=route.provider,
     )
+
+
+_AUTO_TOOL_CHOICE_CLASS = None
+
+
+def _auto_tool_choice_class():
+    """``ChatLiteLLM`` whose ``bind_tools`` never forces a tool call (built
+    once, lazily, so importing this module never imports langchain_litellm)."""
+    global _AUTO_TOOL_CHOICE_CLASS
+    if _AUTO_TOOL_CHOICE_CLASS is None:
+        from langchain_litellm import ChatLiteLLM
+
+        class AutoToolChoiceChatLiteLLM(ChatLiteLLM):
+            def bind_tools(self, tools, *, tool_choice=None, **kwargs):
+                if tool_choice not in (None, False, "auto", "none"):
+                    tool_choice = "auto"
+                return super().bind_tools(tools, tool_choice=tool_choice, **kwargs)
+
+        _AUTO_TOOL_CHOICE_CLASS = AutoToolChoiceChatLiteLLM
+    return _AUTO_TOOL_CHOICE_CLASS
 
 
 class LiteLLMClient:

@@ -31,6 +31,7 @@ import asyncio
 import json
 import logging
 import re
+import warnings
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -76,6 +77,7 @@ def citations_valid(text: str, paper_count: int) -> bool:
 def _build_synthesizer(config: AgentConfig, payload: List[Dict], on_evaluation):
     from deepagents.middleware.rubric import RubricMiddleware
     from langchain.agents import create_agent
+    from langchain_core._api.beta_decorator import LangChainBetaWarning
     from langchain_core.tools import tool
 
     findings_json = json.dumps(payload, indent=2)
@@ -86,18 +88,23 @@ def _build_synthesizer(config: AgentConfig, payload: List[Dict], on_evaluation):
         return findings_json
 
     system_prompt = (_PROMPTS_DIR / "synthesizer.md").read_text(encoding="utf-8")
+    # RubricMiddleware is @beta and warns on every construction, i.e. every
+    # answer; tests/test_synthesis.py pins the API it relies on instead.
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", LangChainBetaWarning)
+        grader = RubricMiddleware(
+            # The grader's structured GraderResponse would otherwise force a
+            # tool call, which Claude on Bedrock rejects with a 400.
+            model=chat_model(config, "verifier", forced_tool_choice=False),
+            tools=[read_verified_findings],
+            max_iterations=SYNTHESIS_MAX_ITERATIONS,
+            on_evaluation=on_evaluation,
+        )
     return create_agent(
         model=chat_model(config, "orchestrator"),
         tools=[],
         system_prompt=system_prompt.format(max_chars=PROMPT_MAX_CHARS),
-        middleware=[
-            RubricMiddleware(
-                model=chat_model(config, "verifier"),
-                tools=[read_verified_findings],
-                max_iterations=SYNTHESIS_MAX_ITERATIONS,
-                on_evaluation=on_evaluation,
-            )
-        ],
+        middleware=[grader],
         name="paper-synthesizer",
     )
 
