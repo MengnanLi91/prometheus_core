@@ -143,7 +143,14 @@ def search_osti(search_query: str, max_results: int = 15) -> List[Dict[str, Any]
             full_url = f"{base_url}?q={encoded_query}&page={page}"
             logger.info(f"[OSTI API] Requesting: {full_url}")
 
-            response = requests.get(full_url, timeout=60, verify=False)
+            # The API negotiates its format: with requests' default "Accept: */*"
+            # it can answer in XML, which json.loads can't read.
+            response = requests.get(
+                full_url,
+                timeout=60,
+                verify=False,
+                headers={"Accept": "application/json"},
+            )
             logger.info(f"[OSTI API] Response status: {response.status_code}")
 
             if response.status_code != 200:
@@ -157,8 +164,16 @@ def search_osti(search_query: str, max_results: int = 15) -> List[Dict[str, Any]
             try:
                 data = json.loads(response.text.replace("\\'", "'"))
             except json.JSONDecodeError as e:
-                logger.error(f"[OSTI API] JSON decode error: {e}")
-                logger.error(f"[OSTI API] Raw response: {response.text[:1000]}")
+                content_type = getattr(response, "headers", {}).get("Content-Type", "")
+                logger.warning(
+                    "[OSTI API] Response on page %d is not JSON (Content-Type %r, "
+                    "starts %r): %s; keeping the %d result(s) found so far",
+                    page,
+                    content_type,
+                    response.text[:60],
+                    e,
+                    len(results),
+                )
                 break
 
             if not data:

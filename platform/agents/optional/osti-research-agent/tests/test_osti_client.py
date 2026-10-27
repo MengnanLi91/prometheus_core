@@ -81,3 +81,27 @@ def test_json_repair_handles_escaped_apostrophe():
 
     assert len(results) == 1
     assert results[0]["title"] == "Bob's Paper"
+
+
+def test_search_asks_the_api_for_json():
+    with patch.object(osti_client.requests, "get", return_value=_response()) as mock_get:
+        osti_client.search_osti("creep rate", max_results=15)
+
+    assert mock_get.call_args.kwargs["headers"] == {"Accept": "application/json"}
+
+
+def test_xml_response_is_one_short_warning_and_keeps_earlier_results(caplog):
+    page_one = json.dumps([{"osti_id": "1", "title": "T", "description": "D"}])
+    xml = _response(text='<?xml version="1.0" encoding="UTF-8"?>\n<records>' + "x" * 5000)
+    xml.headers = {"Content-Type": "application/xml"}
+
+    with patch.object(osti_client.requests, "get", side_effect=[_response(text=page_one), xml]):
+        with caplog.at_level("INFO", logger="research_agent.osti_client"):
+            results = osti_client.search_osti("creep rate", max_results=15)
+
+    assert [r["osti_id"] for r in results] == ["1"]
+    problems = [r for r in caplog.records if r.levelname in ("WARNING", "ERROR")]
+    assert len(problems) == 1 and problems[0].levelname == "WARNING"
+    message = problems[0].getMessage()
+    assert "not JSON" in message and "application/xml" in message
+    assert len(message) < 400  # no 1000-character dump of the response
