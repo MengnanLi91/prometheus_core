@@ -35,9 +35,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db_session
 from app.db.models import SigningKey
+from app.openapi import TAG_IDENTITY
 from app.signing_keys import jwk_for
 
-router = APIRouter(tags=["identity"])
+router = APIRouter(tags=[TAG_IDENTITY])
 
 
 @router.get("/.well-known/jwks.json")

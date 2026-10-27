@@ -38,8 +38,10 @@ from typing import AsyncIterator, cast
 from fastapi import APIRouter, Depends, HTTPException, Request, status as http_status
 from fastapi.responses import StreamingResponse
 
+from app.api_responses import AUTH_RESPONSES
 from app.config import settings
 from app.contract import ServerEvent
+from app.openapi import TAG_EVENTS
 from app.redis_client import RedisClient, get_redis
 from app.security import TokenClaims, current_claims
 from app.services.events import EventBus, StreamItem, run_task_subscriber
@@ -47,7 +49,7 @@ from app.sessions import SessionStore, get_store
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api", tags=["events"])
+router = APIRouter(prefix="/api", tags=[TAG_EVENTS], responses=AUTH_RESPONSES)
 
 # Idle heartbeat cadence (seconds). Sent as an SSE comment when no real event
 # arrives within the window, so the connection survives idle turns.

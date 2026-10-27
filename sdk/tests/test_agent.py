@@ -689,6 +689,21 @@ workflows:
                 assert "workflows" not in payload
                 ParseDict(payload, AgentCard())
 
+    def test_get_input_sources_reads_message_metadata(self):
+        # REQ-010-03: sources come from metadata.inputSources.
+        from a2a.types import Message
+
+        message = Message(message_id="m1")
+        message.metadata.update({"inputSources": {"topic": "model", "weekday": "user"}})
+        context = SimpleNamespace(message=message)
+
+        assert PrometheusAgent.get_input_sources(context) == {"topic": "model", "weekday": "user"}
+        assert (
+            PrometheusAgent.get_input_sources(SimpleNamespace(message=Message(message_id="m2")))
+            == {}
+        )
+        assert PrometheusAgent.get_input_sources(SimpleNamespace(message=None)) == {}
+
     def test_llm_client_helper_inherits_agent_name_and_ignores_request_keys(self):
         """Covers REQ-007-15 and BEH-007-01."""
         agent = PrometheusAgent(agent_name="Trace Agent")

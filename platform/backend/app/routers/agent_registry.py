@@ -46,6 +46,7 @@ from pydantic import BaseModel, Field
 from starlette.background import BackgroundTask
 
 from app.config import settings
+from app.openapi import TAG_AGENT_REGISTRY
 from app.redis_client import RedisClient, get_redis
 
 logger = logging.getLogger(__name__)
@@ -74,7 +75,7 @@ def require_agent_secret(request: Request) -> None:
         raise HTTPException(status_code=401, detail="Invalid or missing agent credentials")
 
 
-router = APIRouter(tags=["agent-registry"], dependencies=[Depends(require_agent_secret)])
+router = APIRouter(tags=[TAG_AGENT_REGISTRY], dependencies=[Depends(require_agent_secret)])
 
 
 def _make_client() -> httpx.AsyncClient:

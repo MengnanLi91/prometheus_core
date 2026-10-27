@@ -10,12 +10,15 @@
 //
 // SPDX-License-Identifier: MIT
 
+import { Fragment } from "react";
 import { Bell, ChevronDown, LogOut, Moon, Settings, Sun } from "lucide-react";
+import { usePageHeaderOverride } from "../lib/store/pageHeader";
 import { useTheme } from "../lib/useTheme";
 import { useCurrentUser } from "../lib/store/session";
 
 interface Props {
-  /** Active section label — drives the breadcrumb + page title. */
+  /** Active section label. Drives the breadcrumb and page title unless the
+   * page overrides them with `usePageHeader`. */
   title: string;
   onLogout: () => void;
   onToggleSettings?: () => void;
@@ -38,16 +41,31 @@ export function Header({ title, onLogout, onToggleSettings }: Props) {
   const [theme, setTheme] = useTheme();
   const nextTheme = theme === "light" ? "dark" : "light";
   const user = useCurrentUser();
+  const override = usePageHeaderOverride();
+
+  const crumbs = [title, ...(override?.trail ?? [])];
+  const pageTitle = override?.title ?? crumbs[crumbs.length - 1];
 
   return (
     <header className="flex h-16 shrink-0 items-center justify-between border-b border-base-300 bg-base-200 px-6">
       <div className="flex flex-col gap-0.5">
-        <div className="flex items-center gap-1 text-[10px] text-base-content/40">
-          <span>INL / Prometheus</span>
-          <span>/</span>
-          <span className="text-primary">{title}</span>
-        </div>
-        <h1 className="m-0 text-lg font-bold text-base-content">{title}</h1>
+        <nav aria-label="Breadcrumb">
+          <ol className="flex items-center gap-1 text-[10px] text-base-content/40">
+            <li>INL / Prometheus</li>
+            {crumbs.map((crumb, i) => {
+              const current = i === crumbs.length - 1;
+              return (
+                <Fragment key={i}>
+                  <li aria-hidden="true">/</li>
+                  <li className={current ? "text-primary" : undefined} aria-current={current ? "page" : undefined}>
+                    {crumb}
+                  </li>
+                </Fragment>
+              );
+            })}
+          </ol>
+        </nav>
+        <h1 className="m-0 text-lg font-bold text-base-content">{pageTitle}</h1>
       </div>
 
       <div className="flex items-center gap-3">

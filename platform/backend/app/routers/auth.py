@@ -30,9 +30,11 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api_responses import AUTH_RESPONSES, ENCRYPTION_RESPONSES
 from app.config import settings
 from app.db import get_db_session
 from app.db.models import OidcProvider
+from app.openapi import TAG_AUTH
 from app.security import (
     OIDC_FLOW_COOKIE,
     User,
@@ -48,7 +50,7 @@ from app.sessions import get_store
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/auth", tags=["auth"])
+router = APIRouter(prefix="/api/auth", tags=[TAG_AUTH])
 
 
 class LoginResult(BaseModel):
@@ -134,7 +136,7 @@ async def logout(request: Request, response: Response) -> dict[str, bool]:
     return {"ok": True}
 
 
-@router.get("/me", response_model=User)
+@router.get("/me", response_model=User, responses=AUTH_RESPONSES)
 async def me(user: User = Depends(current_user)) -> User:
     """Return the authenticated user, or 401. Replaces the React ``/user`` probe."""
     return user
@@ -179,7 +181,7 @@ async def login_via_provider(
     return redirect
 
 
-@router.get("/callback/{provider}")
+@router.get("/callback/{provider}", responses=ENCRYPTION_RESPONSES)
 async def oauth_callback(provider: str, request: Request, db: AsyncSession = Depends(get_db_session)) -> Response:
     """OIDC redirect callback — resolved through the provider registry (AU-6).
 
