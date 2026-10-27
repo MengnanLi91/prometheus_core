@@ -43,15 +43,16 @@ export type CheckpointNode = Node<CheckpointNodeData, "checkpoint">;
 /** Wires attach at the top and bottom centre. The handles are only anchors, so they're hidden. */
 const HANDLE_CLASS = "!size-px !min-h-0 !min-w-0 !border-0 !bg-transparent";
 
-/** Sizes go on each span: the base layer sets span font-size, so it isn't inherited. */
-function PortRow({ label, value, dot }: { label: "IN" | "OUT"; value: string; dot: string }) {
-  const dotEl = <span aria-hidden="true" className={`size-2 shrink-0 rounded-full ${dot}`} />;
+/**
+ * A label and its value, e.g. "IN material_id". Labels share a fixed width so
+ * the values line up. Sizes go on each span: the base layer sets span
+ * font-size, so it isn't inherited.
+ */
+function DetailRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex min-w-0 items-center gap-1.5 font-mono">
-      {label === "IN" && dotEl}
-      <span className="shrink-0 text-[8.5px] leading-3 text-base-content/50">{label}</span>
+      <span className="w-[18px] shrink-0 text-[8.5px] leading-3 text-base-content/50">{label}</span>
       <span className="min-w-0 flex-1 truncate text-[9px] leading-3 text-base-content/70">{value}</span>
-      {label === "OUT" && dotEl}
     </div>
   );
 }
@@ -70,12 +71,9 @@ export function WorkflowAgentNode({ data }: NodeProps<AgentNode>) {
         </span>
         <StatusPill {...STATUS_PILL[data.status]} />
       </div>
-      <PortRow label="IN" value={data.input} dot="bg-info" />
-      <PortRow label="OUT" value={data.output} dot="bg-success" />
-      <div className="flex items-center justify-between gap-2 font-mono">
-        <span className="text-[8.5px] leading-3 text-base-content/50">EST</span>
-        <span className="text-[9px] font-medium leading-3 text-base-content/70">{data.est}</span>
-      </div>
+      <DetailRow label="IN" value={data.input} />
+      <DetailRow label="OUT" value={data.output} />
+      <DetailRow label="EST" value={data.est} />
       <Handle type="source" position={Position.Bottom} isConnectable={false} className={HANDLE_CLASS} />
     </div>
   );
