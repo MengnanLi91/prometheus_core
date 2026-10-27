@@ -54,9 +54,10 @@ export function WorkflowTemplateCard({ template, selected = false, onSelect }: W
           <h3 className="m-0 truncate text-sm font-bold text-base-content" title={name}>
             {name}
           </h3>
-          <div className="flex flex-wrap items-center gap-2 text-[10px] uppercase leading-3">
+          {/* Sizes go on each span: the base layer sets span font-size, so it isn't inherited. */}
+          <div className="flex flex-wrap items-center gap-2">
             <Tag label={complexity} />
-            <span className="inline-flex items-center gap-1 font-bold text-primary">
+            <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase leading-3 text-primary">
               <Diamond aria-hidden="true" size={9} className="fill-current" />
               {checkpoints} {checkpoints === 1 ? "checkpoint" : "checkpoints"}
             </span>
@@ -76,12 +77,12 @@ export function WorkflowTemplateCard({ template, selected = false, onSelect }: W
           </div>
         </dl>
 
-        <div className="flex items-center justify-between gap-2 rounded bg-base-content/5 px-3 py-2 text-[10px]">
-          <span className="inline-flex items-center gap-1 text-info">
+        <div className="flex items-center justify-between gap-2 rounded bg-base-content/5 px-3 py-2">
+          <span className="inline-flex items-center gap-1 text-[10px] leading-3 text-info">
             <Zap aria-hidden="true" size={10} className="fill-current text-warning" />
             {speedup} faster
           </span>
-          <span className="text-base-content/40">vs baseline</span>
+          <span className="text-[10px] leading-3 text-base-content/40">vs baseline</span>
         </div>
 
         {selected ? (
