@@ -19,7 +19,7 @@ import json
 import logging
 import os
 import urllib.parse
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, TYPE_CHECKING
 
 import requests
 
@@ -52,6 +52,7 @@ def download_pdf_from_url(
     max_bytes: int = _DEFAULT_MAX_PDF_BYTES,
     timeout: int = 120,
     cache: Optional[PdfCache] = None,
+    on_status: Optional[Callable[[int], None]] = None,
 ) -> Optional[str]:
     """Fetch an arbitrary PDF URL (e.g. an open-access link from scholarly or
     web search) to ``dest_path``. Returns the path, or None if the response
@@ -62,7 +63,8 @@ def download_pdf_from_url(
     served with a 200. Redirects are followed; a sane User-Agent is sent.
 
     With ``cache``, a PDF fetched before is served from it, and a fetched PDF
-    is stored in it for 30 days."""
+    is stored in it for 30 days. ``on_status`` receives the HTTP status of a
+    non-200 response, so a caller can stop using a host that refuses it."""
     key = url_cache_key(url)
     if cache is not None:
         try:
@@ -91,6 +93,8 @@ def download_pdf_from_url(
 
     if resp.status_code != 200:
         logger.warning(f"URL download non-200 ({resp.status_code}) for {url}")
+        if on_status is not None:
+            on_status(resp.status_code)
         return None
 
     content_length = resp.headers.get("Content-Length")

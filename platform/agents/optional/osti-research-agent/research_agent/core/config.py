@@ -21,9 +21,11 @@ with nothing but LiteLLM credentials.
 
 import os
 from pathlib import Path
-from typing import Dict, Literal, Optional
+from typing import Dict, Literal, Optional, Tuple
 
 from pydantic import BaseModel, Field
+
+from research_agent.download_policy import DEFAULT_ALLOWED_DOMAINS, parse_domains
 
 
 class ModelRoute(BaseModel):
@@ -76,6 +78,9 @@ class AgentConfig(BaseModel):
     embedding_model: str = "embedding"
     # PDF download cap for arbitrary (non-OSTI) URLs.
     max_pdf_mb: int = 50
+    # Hosts PDFs may be downloaded from (subdomains included); the OSTI purl
+    # path is always allowed. See research_agent.download_policy.
+    download_allowed_domains: Tuple[str, ...] = DEFAULT_ALLOWED_DOMAINS
 
     # --- PDF parsing ---
     # "artifacts" runs the docling-worker ladder (paper.md + per-table CSV/MD +
@@ -133,6 +138,7 @@ class AgentConfig(BaseModel):
             verifier_model_call_limit=int(os.getenv("VERIFIER_MODEL_CALL_LIMIT", "10")),
             verifier_tool_call_limit=int(os.getenv("VERIFIER_TOOL_CALL_LIMIT", "12")),
             max_pdf_mb=int(os.getenv("MAX_PDF_MB", "50")),
+            download_allowed_domains=parse_domains(os.getenv("DOWNLOAD_ALLOWED_DOMAINS")),
             parser=os.getenv("PARSER", "artifacts"),
             docling_timeout_s=int(os.getenv("DOCLING_TIMEOUT_S", "240")),
             docling_images_scale=float(os.getenv("DOCLING_IMAGES_SCALE", "2.0")),

@@ -226,7 +226,7 @@ def test_download_paper_rejects_unreturned_direct_url(monkeypatch):
 def test_download_paper_writes_direct_url_into_run_workdir(monkeypatch, tmp_path):
     dests = []
 
-    def fake_download(url, dest, *, max_bytes, cache=None):
+    def fake_download(url, dest, *, max_bytes, cache=None, on_status=None):
         assert cache is ctx.pdf_cache
         dests.append(dest)
         return dest
@@ -236,7 +236,7 @@ def test_download_paper_writes_direct_url_into_run_workdir(monkeypatch, tmp_path
     ctx.run_workdir = tmp_path
     ctx.search_hits["10.1/x"] = {
         "origin": "openalex",
-        "oa_pdf_url": "https://papers.example/x.pdf",
+        "oa_pdf_url": "https://arxiv.org/pdf/x.pdf",
     }
     download = _tool(build_osti_tools(ctx), "download_paper")
 

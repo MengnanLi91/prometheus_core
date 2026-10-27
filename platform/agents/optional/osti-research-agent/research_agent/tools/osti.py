@@ -31,7 +31,7 @@ from typing import List, Optional
 
 from langchain_core.tools import BaseTool, tool
 
-from research_agent import osti_client
+from research_agent import download_policy, osti_client
 from research_agent.parsing import pipeline as parse_pipeline
 from research_agent.parsing.artifacts import ParsedPaper, _safe_source_id
 from research_agent.tools import progress
@@ -82,6 +82,20 @@ def _parse_summary(parsed: ParsedPaper, safe_id: str) -> dict:
         ],
         "warnings": parsed.warnings,
     }
+
+
+def _note_refusal(ctx: RunContext, url: str, status: int) -> None:
+    """A host that answers 401/403 refuses scripted downloads: skip it for the
+    rest of the run (only this run - the refusal may be temporary)."""
+    if status in (401, 403):
+        host = download_policy.host_of(url)
+        if host and host not in ctx.refused_hosts:
+            ctx.refused_hosts.add(host)
+            progress.emit(
+                f"{host} refused the download (HTTP {status}); "
+                "skipping it for the rest of this run",
+                {"host": host, "status": status},
+            )
 
 
 def _download_failed(source_id: str, ctx: RunContext) -> dict:
@@ -196,6 +210,20 @@ def build_osti_tools(ctx: RunContext) -> List[BaseTool]:
                 )
         direct_url = url or hit.get("oa_pdf_url")
 
+        if direct_url and not ctx.can_download(direct_url):
+            host = download_policy.host_of(direct_url) or direct_url
+            refused = host in ctx.refused_hosts
+            ctx.download_failures[source_id] = (
+                f"{host} refused a download earlier in this run"
+                if refused
+                else f"{host} is not on the download allowlist"
+            )
+            progress.emit(
+                f"Skipping {source_id}: {ctx.download_failures[source_id]}",
+                {"source_id": source_id, "host": host},
+            )
+            return json.dumps(_download_failed(source_id, ctx))
+
         if direct_url:
             progress.emit(f"Downloading {source_id} from {direct_url}")
             # Inside the run workdir so concurrent runs never share a file and
@@ -209,6 +237,7 @@ def build_osti_tools(ctx: RunContext) -> List[BaseTool]:
                 dest,
                 max_bytes=ctx.config.max_pdf_mb * 1024 * 1024,
                 cache=ctx.pdf_cache,
+                on_status=lambda status: _note_refusal(ctx, direct_url, status),
             )
         else:
             progress.emit(f"Downloading OSTI #{source_id}")

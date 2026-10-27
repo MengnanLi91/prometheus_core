@@ -54,7 +54,7 @@ def test_search_scholarly_records_hits_with_oa_pdf(monkeypatch):
                 "abstract": "x" * 5000,
                 "doi": "10.1234_abc",
                 "url": "https://doi.org/10.1234/abc",
-                "oa_pdf_url": "https://oa.example/abc.pdf",
+                "oa_pdf_url": "https://arxiv.org/pdf/abc.pdf",
                 "origin": "openalex",
             }
         ]
@@ -67,10 +67,10 @@ def test_search_scholarly_records_hits_with_oa_pdf(monkeypatch):
 
     assert out[0]["source_id"] == "10.1234_abc"
     assert len(out[0]["abstract"]) == 600  # truncated
-    assert out[0]["oa_pdf_url"] == "https://oa.example/abc.pdf"
+    assert out[0]["oa_pdf_url"] == "https://arxiv.org/pdf/abc.pdf"
     # recorded so download_paper can fetch the open-access PDF later
     hit = ctx.search_hits["10.1234_abc"]
-    assert hit["oa_pdf_url"] == "https://oa.example/abc.pdf"
+    assert hit["oa_pdf_url"] == "https://arxiv.org/pdf/abc.pdf"
     assert hit["origin"] == "openalex"
 
 

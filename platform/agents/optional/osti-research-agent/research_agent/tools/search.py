@@ -56,8 +56,9 @@ def build_search_tools(ctx: RunContext) -> List[BaseTool]:
         index) and arXiv (preprints). Use when OSTI has few relevant hits or the
         topic is outside DOE/nuclear scope. Returns a JSON list of {source_id,
         title, authors, year, abstract, doi, url, oa_pdf_url, origin};
-        ``oa_pdf_url`` is present only when an open-access PDF exists - pass it to
-        download_paper(source_id, url=...) to read the full text."""
+        ``oa_pdf_url`` is present only when an open-access PDF exists on a host
+        the agent may download from - pass it to download_paper(source_id,
+        url=...) to read the full text. A result without one cannot be read."""
         reason = ctx.reserve_search(
             "scholarly",
             query,
@@ -93,10 +94,15 @@ def build_search_tools(ctx: RunContext) -> List[BaseTool]:
             source_id = str(h.get("source_id", ""))
             if not source_id or source_id in ctx.search_hits:
                 continue
+            # Only offer a PDF the agent is allowed to download: a link on a
+            # host that refuses scripted downloads just wastes a turn.
+            oa_pdf_url = h.get("oa_pdf_url")
+            if oa_pdf_url and not ctx.can_download(oa_pdf_url):
+                oa_pdf_url = None
             ctx.search_hits[source_id] = {
                 "title": h.get("title", ""),
                 "url": h.get("url", ""),
-                "oa_pdf_url": h.get("oa_pdf_url"),
+                "oa_pdf_url": oa_pdf_url,
                 "origin": h.get("origin", "openalex"),
                 "abstract": h.get("abstract") or "",
                 "year": h.get("year"),
@@ -110,7 +116,7 @@ def build_search_tools(ctx: RunContext) -> List[BaseTool]:
                     "abstract": (h.get("abstract") or "")[:_ABSTRACT_TRUNCATE],
                     "doi": h.get("doi"),
                     "url": h.get("url", ""),
-                    "oa_pdf_url": h.get("oa_pdf_url"),
+                    "oa_pdf_url": oa_pdf_url,
                     "origin": h.get("origin", "openalex"),
                 }
             )
@@ -123,8 +129,8 @@ def build_search_tools(ctx: RunContext) -> List[BaseTool]:
         open-access PDF location when OSTI/scholarly search is thin. Returns JSON
         {available, results:[{source_id, title, url, snippet, published}]}; if web
         search is not configured, ``available`` is false and you should rely on
-        search_osti/search_scholarly instead. Only download URLs returned here -
-        never invent a PDF URL."""
+        search_osti/search_scholarly instead. Only download a result whose
+        ``downloadable`` is true, and never invent a PDF URL."""
         provider = get_web_provider(ctx.config)
         if provider is None:
             return json.dumps(
@@ -146,6 +152,7 @@ def build_search_tools(ctx: RunContext) -> List[BaseTool]:
             if not url:
                 continue
             source_id = _web_source_id(url)
+            downloadable = ctx.can_download(url)
             ctx.search_hits[source_id] = {
                 "title": h.get("title", ""),
                 "url": url,
@@ -160,6 +167,7 @@ def build_search_tools(ctx: RunContext) -> List[BaseTool]:
                     "url": url,
                     "snippet": h.get("snippet", ""),
                     "published": h.get("published"),
+                    "downloadable": downloadable,
                 }
             )
         progress.emit(f"Found {len(out)} web results")

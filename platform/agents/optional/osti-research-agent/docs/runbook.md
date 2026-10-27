@@ -36,6 +36,7 @@ defaults.
 | `OPENALEX_MAILTO` | — | identifies the caller to OpenAlex's polite pool |
 | `EMBEDDING_MODEL` | `embedding` | LiteLLM alias for the knowledge-store embeddings |
 | `MAX_PDF_MB` | `50` | maximum download size for arbitrary non-OSTI PDF URLs |
+| `DOWNLOAD_ALLOWED_DOMAINS` | built-in list | comma-separated hosts PDFs may be downloaded from (subdomains included). Others are never fetched, and search results only offer `oa_pdf_url` for them; a host that answers 401/403 is dropped for the rest of the run. The OSTI purl path is always allowed. Default list: `research_agent/download_policy.py` |
 | `PARSER` | `artifacts` | `legacy` forces the old text-blob path |
 | `DOCLING_TIMEOUT_S` | `240` | timeout for the isolated Docling conversion process |
 | `DOCLING_IMAGES_SCALE` | `2.0` | page-image render scale; memory grows with its square, so `1.0` needs about a quarter. Lower it if the worker is killed out of memory ("exited -9") |

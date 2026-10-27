@@ -70,6 +70,8 @@ class RunContext:
     pdf_paths: Dict[str, str] = field(default_factory=dict)
     # source_id -> prior terminal download failure, so retries stay local.
     download_failures: Dict[str, str] = field(default_factory=dict)
+    # Hosts that refused a download (401/403) this run; skipped from then on.
+    refused_hosts: set[str] = field(default_factory=set)
     # source_id -> why its parse failed; failed parses don't use a paper slot,
     # so this is what stops the same PDF from being retried.
     parse_failures: Dict[str, str] = field(default_factory=dict)
@@ -102,6 +104,14 @@ class RunContext:
     # Discrete facts written to the knowledge base via store_facts (reported in
     # the FinalResult).
     facts_stored: int = 0
+
+    def can_download(self, url: str) -> bool:
+        """``url`` is on the allowlist and its host hasn't refused us this run."""
+        from research_agent.download_policy import host_of, url_allowed
+
+        return url_allowed(url, self.config.download_allowed_domains) and (
+            host_of(url) not in self.refused_hosts
+        )
 
     def seconds_left(self) -> float:
         return self.deadline - time.monotonic()
