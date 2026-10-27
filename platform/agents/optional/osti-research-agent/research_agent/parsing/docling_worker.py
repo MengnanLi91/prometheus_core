@@ -122,7 +122,11 @@ def _pipeline_options(options: Dict[str, Any]):
         do_ocr=bool(options.get("do_ocr", False)),
     )
     opts.layout_options.engine_options.compile_model = False
-    opts.table_structure_options.mode = TableFormerMode.ACCURATE
+    opts.table_structure_options.mode = (
+        TableFormerMode.FAST
+        if options.get("table_mode") == "fast"
+        else TableFormerMode.ACCURATE
+    )
     return opts
 
 

@@ -38,6 +38,8 @@ defaults.
 | `MAX_PDF_MB` | `50` | maximum download size for arbitrary non-OSTI PDF URLs |
 | `PARSER` | `artifacts` | `legacy` forces the old text-blob path |
 | `DOCLING_TIMEOUT_S` | `240` | timeout for the isolated Docling conversion process |
+| `DOCLING_IMAGES_SCALE` | `2.0` | page-image render scale; memory grows with its square, so `1.0` needs about a quarter. Lower it if the worker is killed out of memory ("exited -9") |
+| `DOCLING_TABLE_MODE` | `accurate` | TableFormer mode, `accurate` or `fast` (less memory and time, rougher table structure) |
 | `PARSE_OCR` | `auto` | `on`/`off` force OCR for scanned PDFs |
 | `ANALYZE_FIGURES` | `false` | enable the figure VLM pass |
 | `MAX_FIGURES` | `12` | maximum figures considered per paper |

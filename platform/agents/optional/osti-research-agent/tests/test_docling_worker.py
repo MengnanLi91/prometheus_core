@@ -31,6 +31,18 @@ def test_pipeline_options_disable_torch_compile():
     assert options.layout_options.engine_options.compile_model is False
 
 
+def test_pipeline_options_apply_the_memory_settings():
+    from docling.datamodel.pipeline_options import TableFormerMode
+
+    low = dw._pipeline_options({"images_scale": 1.0, "table_mode": "fast"})
+    default = dw._pipeline_options({})
+
+    assert low.images_scale == 1.0
+    assert low.table_structure_options.mode == TableFormerMode.FAST
+    assert default.images_scale == 2.0
+    assert default.table_structure_options.mode == TableFormerMode.ACCURATE
+
+
 class FakeProv:
     def __init__(self, page_no):
         self.page_no = page_no

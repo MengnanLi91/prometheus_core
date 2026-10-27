@@ -83,6 +83,12 @@ class AgentConfig(BaseModel):
     # (pdf_convert.convert_pdf_to_text_async) as a rollback option.
     parser: Literal["artifacts", "legacy"] = "artifacts"
     docling_timeout_s: int = 240
+    # Docling memory use. Page images are rendered at this scale and kept for
+    # figure crops, so memory grows with its square: 1.0 needs about a quarter
+    # of 2.0's. "fast" TableFormer uses less memory and time than "accurate".
+    # Lower both if the docling worker is OOM-killed ("exited -9").
+    docling_images_scale: float = Field(default=2.0, gt=0, le=4)
+    docling_table_mode: Literal["accurate", "fast"] = "accurate"
     # OCR for scanned PDFs: "auto" turns it on only when the cheap PyMuPDF
     # pre-check finds near-zero extractable text; "on"/"off" force it.
     parse_ocr: Literal["auto", "on", "off"] = "auto"
@@ -129,6 +135,8 @@ class AgentConfig(BaseModel):
             max_pdf_mb=int(os.getenv("MAX_PDF_MB", "50")),
             parser=os.getenv("PARSER", "artifacts"),
             docling_timeout_s=int(os.getenv("DOCLING_TIMEOUT_S", "240")),
+            docling_images_scale=float(os.getenv("DOCLING_IMAGES_SCALE", "2.0")),
+            docling_table_mode=os.getenv("DOCLING_TABLE_MODE", "accurate").strip().lower(),
             parse_ocr=os.getenv("PARSE_OCR", "auto"),
             analyze_figures=_env_bool("ANALYZE_FIGURES", default=False),
             max_figures=int(os.getenv("MAX_FIGURES", "12")),

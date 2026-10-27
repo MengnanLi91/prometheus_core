@@ -208,3 +208,46 @@ def test_docling_worker_killed_on_timeout(tmp_path, monkeypatch):
 
     assert result is None
     assert not _alive(int(pid_file.read_text()))
+
+
+def test_pipeline_passes_the_memory_settings_to_the_worker(tmp_path, monkeypatch):
+    config = AgentConfig(
+        litellm_base_url="http://unused",
+        workdir=tmp_path,
+        docling_images_scale=1.0,
+        docling_table_mode="fast",
+    )
+    seen = {}
+
+    async def worker(pdf_path, outdir, options, timeout):
+        seen.update(options)
+        return None
+
+    monkeypatch.setattr(pp, "_precheck", lambda p: (3, 500))
+    monkeypatch.setattr(pp, "_run_docling_worker", worker)
+    from research_agent import pdf_convert
+
+    monkeypatch.setattr(pdf_convert, "_convert_pdf_with_pymupdf", lambda p: "TEXT")
+    asyncio.run(pp.parse_paper_pipeline("d.pdf", "9", config, caches=None))
+
+    assert (seen["images_scale"], seen["table_mode"]) == (1.0, "fast")
+
+
+def test_oom_killed_worker_is_reported_as_out_of_memory(tmp_path, monkeypatch, caplog):
+    script = tmp_path / "oom.py"
+    script.write_text("import os, signal\nos.kill(os.getpid(), signal.SIGKILL)\n")
+    real_exec = asyncio.create_subprocess_exec
+
+    async def fake_exec(python, *_args, **kwargs):
+        return await real_exec(python, str(script), **kwargs)
+
+    monkeypatch.setattr(pp.asyncio, "create_subprocess_exec", fake_exec)
+    with caplog.at_level("ERROR", logger="research_agent.parsing.pipeline"):
+        result = asyncio.run(
+            pp._run_docling_worker("x.pdf", tmp_path / "out", {}, timeout=30)
+        )
+
+    assert result is None
+    (record,) = [r for r in caplog.records if r.levelname == "ERROR"]
+    assert "most likely out of memory" in record.getMessage()
+    assert "DOCLING_IMAGES_SCALE" in record.getMessage()

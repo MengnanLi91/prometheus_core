@@ -27,6 +27,7 @@ import asyncio
 import io
 import logging
 import os
+import signal
 import sys
 import tarfile
 import tempfile
@@ -155,6 +156,14 @@ async def _run_docling_worker(
         except OSError:
             pass
 
+    if proc.returncode == -signal.SIGKILL:
+        # Not our timeout (that path returns above): the kernel's OOM killer.
+        logger.error(
+            "[parse] docling worker was killed (SIGKILL), most likely out of "
+            "memory; falling back to PyMuPDF text. Give Docker more memory, or "
+            "lower DOCLING_IMAGES_SCALE / set DOCLING_TABLE_MODE=fast."
+        )
+        return None
     if proc.returncode != 0:
         logger.error(
             "[parse] docling worker exited %s: %s",
@@ -258,7 +267,8 @@ async def parse_paper_pipeline(
     await emit(f"Parsing OSTI #{source_id} (docling: tables + figures)...")
     options = {
         "do_ocr": do_ocr,
-        "images_scale": 2.0,
+        "images_scale": config.docling_images_scale,
+        "table_mode": config.docling_table_mode,
         "source_id": source_id,
         "min_figure_area": config.min_figure_area,
     }
