@@ -265,6 +265,117 @@ def test_get_agent_card_prefers_raw_prometheus_endpoint(monkeypatch) -> None:
     assert result["skills"][0]["inputSchema"]["required"] == ["material_id", "context"]
 
 
+
+def test_discover_agents_sends_agent_secret_and_normalizes_entries(monkeypatch) -> None:
+    captured: dict = {}
+
+    class _Client:
+        def __init__(self, *args, headers=None, **kwargs):
+            captured["headers"] = headers
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+        async def get(self, endpoint):
+            captured["endpoint"] = endpoint
+            return _FakeResponse(
+                {
+                    "data": [
+                        {
+                            "agent_name": "thermal-analysis-agent",
+                            "agent_card_params": {
+                                "name": "Thermal Analysis Agent",
+                                "url": "http://thermal-agent:8000",
+                            },
+                        }
+                    ]
+                }
+            )
+
+    monkeypatch.setattr(tool_discovery, "AGENT_SECRET", "test-secret")
+    monkeypatch.setattr(tool_discovery.httpx, "AsyncClient", _Client)
+
+    agents = asyncio.run(tool_discovery.discover_agents())
+
+    assert captured["headers"] == {"Authorization": "Bearer test-secret"}
+    assert captured["endpoint"] == f"{tool_discovery.REGISTRY_URL}/v1/agents"
+    assert agents == [
+        {
+            "agent_id": "thermal-analysis-agent",
+            "agent_name": "thermal-analysis-agent",
+            "name": "Thermal Analysis Agent",
+            "url": "http://thermal-agent:8000",
+            "agent_card_params": {
+                "name": "Thermal Analysis Agent",
+                "url": "http://thermal-agent:8000",
+            },
+        }
+    ]
+
+
+def test_get_agent_card_falls_back_to_registry_gateway(monkeypatch) -> None:
+    gateway_card = {"name": "Thermal Analysis Agent", "skills": [{"id": "analyze_thermal"}]}
+
+    class _Client:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+        async def get(self, endpoint):
+            if endpoint == f"{tool_discovery.REGISTRY_URL}/a2a/thermal-analysis-agent":
+                return _FakeResponse(gateway_card)
+            return _FakeResponse({}, status_code=404)
+
+    monkeypatch.setattr(tool_discovery.httpx, "AsyncClient", _Client)
+
+    result = asyncio.run(tool_discovery.get_agent_card("thermal-analysis-agent"))
+
+    assert result == gateway_card
+
+
+def test_capability_cache_refresh_routes_through_registry_gateway(monkeypatch) -> None:
+    import capability_cache
+
+    async def fake_discover_agents():
+        return [
+            {
+                "agent_id": "thermal-analysis-agent",
+                "name": "Thermal Analysis Agent",
+                "url": "http://thermal-agent:8000",
+                "agent_card_params": {},
+            }
+        ]
+
+    async def fake_get_agent_card(agent_id: str, direct_url: str | None = None):
+        return {"skills": [{"id": "analyze_thermal"}]}
+
+    class _Redis:
+        def __init__(self):
+            self.store: dict = {}
+
+        def set(self, key, value):
+            self.store[key] = value
+
+    monkeypatch.setattr(capability_cache, "discover_agents", fake_discover_agents)
+    monkeypatch.setattr(capability_cache, "get_agent_card", fake_get_agent_card)
+    monkeypatch.setattr(capability_cache, "is_self_agent", lambda agent_id, agent_url: False)
+
+    cache = capability_cache.CapabilityCache()
+    cache._redis = _Redis()
+    asyncio.run(cache.refresh())
+
+    capability = cache.get_by_skill_id("analyze_thermal")
+    assert capability is not None
+    assert capability.agent_url == f"{capability_cache.REGISTRY_URL}/a2a/thermal-analysis-agent"
+
 def test_call_a2a_agent_enriches_response_with_native_artifacts(monkeypatch) -> None:
     a2a_payload = {
         "result": {
