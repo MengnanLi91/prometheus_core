@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Questions
+    url: https://github.com/idaholab/prometheus_core/discussions
+    about: Ask general questions about Prometheus and discuss with other community members.
+  - name: Security vulnerability
+    url: https://github.com/idaholab/prometheus_core/security/policy
+    about: Please report security vulnerabilities privately, not as public issues.
