@@ -347,13 +347,15 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run python -m pytest -p pytest_asyncio.plugi
 
 ```bash
 make test-static       # Static checks of compose, env vars, ports — no Docker needed
-make test-integration  # Hits running containers (start the stack first via make up)
+make test-integration  # Hits the running containers (start the stack first via make up)
 make test-infra        # Both
 ```
 
+See `tests/README.md` for how the integration tests pick a stack and run in CI without real LLM or DeepLynx credentials.
+
 ### Startup check
 
-`make up` returns only once the platform is up. It first waits for every service with a healthcheck to report healthy (`docker compose up --wait`), then runs `make check`. That checks the backend and frontend on their host ports, the frontend's `/api` proxy, and that the client-agent and every included agent have registered with LiteLLM. `restart`, `ng-up` and `ng-restart` do the same, and the `-fg` targets can't, since they never return. Set `CHECK=false` to return as soon as the containers start, and run `make check` later against a running stack. CI's `platform: up` job runs the same `make up`.
+`make up` returns only once the platform is up. It first waits for every service with a healthcheck to report healthy (`docker compose up --wait`), then runs `make check`. That checks the backend and frontend on their host ports, the frontend's `/api` proxy, and that the client-agent and every included agent have registered with LiteLLM. `restart`, `ng-up` and `ng-restart` do the same, and the `-fg` targets can't, since they never return. Set `CHECK=false` to return as soon as the containers start, and run `make check` later against a running stack. CI's `platform: up` job runs the same `make up`, then `make test-integration` against that stack.
 
 A healthy agent shows only that it serves HTTP. LiteLLM registration runs in the background, so `make check` is what confirms that the platform can route to the agent. Every per-agent `docker-compose.yml` must define a healthcheck on the base class's health endpoint, and `make test-static` enforces it.
 

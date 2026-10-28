@@ -235,8 +235,29 @@ def _run_compose_or_fail(
 
 
 @pytest.fixture(scope="session")
-def env_test_file(project_root: Path):
-    """Generate a .env.test file with test-safe credentials. Cleans up after session."""
+def running_stack() -> bool:
+    """Whether a platform stack (e.g. from ``make up``) is already running.
+
+    The compose services have fixed container names, so a second stack can't
+    start next to it; the integration tests use the running one instead.
+    """
+    return _docker_available() and _inspect_container("litellm-proxy", "{{.State.Status}}") == "running"
+
+
+@pytest.fixture(scope="session")
+def env_test_file(project_root: Path, running_stack: bool):
+    """Return the env file of the stack under test.
+
+    With a running stack, that's its platform/.env. Otherwise, generate a
+    .env.test file with test-safe credentials, cleaned up after the session.
+    """
+    if running_stack:
+        env_path = project_root / ".env"
+        if not env_path.is_file():
+            pytest.fail(f"A platform stack is running, but {env_path} (its credentials and ports) does not exist")
+        yield env_path
+        return
+
     test_secret = uuid.uuid4().hex[:16]
     env_path = project_root / ".env.test"
     env_path.write_text(
@@ -279,13 +300,26 @@ def _parse_env_test_file(env_path: Path) -> dict[str, str]:
 
 
 @pytest.fixture(scope="session")
-def docker_compose_up(project_root: Path, env_test_file: Path, test_ports: dict[str, int]):
+def docker_compose_up(project_root: Path, env_test_file: Path, test_ports: dict[str, int], running_stack: bool):
     """Start infrastructure-only Docker stack for integration tests.
 
     Uses .env.test with test-safe credentials and offset ports.
     Only starts infra services (no agents).
     Tears down and removes volumes after session.
+
+    If a stack is already running (``make up``), use it as is: it's neither
+    started nor torn down here, and its ports come from platform/.env.
     """
+    if running_stack:
+        env_vars = _parse_env_test_file(env_test_file)
+        yield {
+            "litellm": int(env_vars.get("LITELLM_LOCAL_PORT", "9977")),
+            "redis": int(env_vars.get("REDIS_LOCAL_PORT", "6379")),
+            "client_agent": int(env_vars.get("CLIENT_AGENT_PORT", "8001")),
+            "backend": int(env_vars.get("BACKEND_PORT", "8600")),
+        }
+        return
+
     if not _docker_available():
         pytest.skip("Docker is not available")
 
