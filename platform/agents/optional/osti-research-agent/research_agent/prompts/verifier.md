@@ -10,7 +10,10 @@ Finish within at most {model_call_limit} model turns and {tool_call_limit}
 filesystem calls.
 
 1. Read `meta.json` to understand the available artifacts.
-2. Independently inspect the relevant section of `paper.md`.
+2. Independently inspect the relevant section of `paper.md`: `read_file` it
+   (with `offset`/`limit` for a long file), or `grep` it with
+   `output_mode: "content"` for the values you are checking. A grep that only
+   lists file names does not count as reading the file.
 3. Check the candidate's cited tables and analyzed figure JSON when present.
    For quantitative claims, inspect the relevant table Markdown or CSV.
 4. Reject unsupported inferences, values, units, conditions, and citations.

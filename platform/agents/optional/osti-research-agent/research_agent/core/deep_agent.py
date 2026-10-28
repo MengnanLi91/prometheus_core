@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -345,15 +346,56 @@ def _validated_artifacts(
 
 
 def _read_file_paths(result: dict) -> set[str]:
+    """Files whose text the verifier actually saw.
+
+    ``read_file`` counts for its path. A ``grep`` in ``content`` mode counts
+    too, for each file its result shows matching lines from: verifiers check a
+    long paper.md by searching it for the claimed values rather than paging
+    through it, and those matches are the file's own text. A grep that only
+    listed file names, or matched nothing, shows no text and does not count."""
     paths = set()
+    grep_calls = {}
     for message in result.get("messages", []) or []:
         for call in getattr(message, "tool_calls", None) or []:
-            if not isinstance(call, dict) or call.get("name") != "read_file":
+            if not isinstance(call, dict):
                 continue
             args = call.get("args", {})
-            if isinstance(args, dict) and args.get("file_path"):
+            if not isinstance(args, dict):
+                continue
+            if call.get("name") == "read_file" and args.get("file_path"):
                 paths.add(str(PurePosixPath(str(args["file_path"]))))
+            elif call.get("name") == "grep" and args.get("output_mode") == "content":
+                grep_calls[call.get("id")] = args
+        if getattr(message, "type", None) == "tool" and message.tool_call_id in grep_calls:
+            paths |= _grep_matched_files(_message_content(message))
     return paths
+
+
+# deepagents formats content-mode grep output as a "/path/file.md:" header per
+# file followed by indented "  12: <text>" match lines ("  12- <text>" for
+# context lines). A file counts only when a matched line follows its header.
+_GREP_FILE_HEADER = re.compile(r"^(/\S+):$")
+_GREP_MATCH_LINE = re.compile(r"^\s+\d+:\s")
+
+
+def _grep_matched_files(output: str) -> set[str]:
+    files, current = set(), None
+    for line in output.splitlines():
+        header = _GREP_FILE_HEADER.match(line.rstrip())
+        if header:
+            current = str(PurePosixPath(header.group(1)))
+        elif current and _GREP_MATCH_LINE.match(line):
+            files.add(current)
+    return files
+
+
+def _message_content(message) -> str:
+    content = getattr(message, "content", "")
+    if isinstance(content, list):
+        return "".join(
+            part.get("text", "") if isinstance(part, dict) else str(part) for part in content
+        )
+    return str(content or "")
 
 
 def _verification_payload(result: dict) -> Any:
