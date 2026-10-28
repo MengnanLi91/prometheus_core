@@ -299,12 +299,15 @@ def _analysis_description(question: str, paper_directory: str) -> str:
         f"Research question:\n{question.strip()}\n\n"
         f"Parsed paper directory: {paper_directory}\n\n"
         "Analyze only this paper and return the required Finding JSON.\n\n"
-        "If the paper reports the asked quantity for this material at ANY "
-        "conditions - even far from those asked - do not answer "
-        '`answered: false`: return a Finding with `match: "nearest"` holding the '
-        "reported values closest to the asked conditions, and state the "
-        "conditions they were reported at. Use `answered: false` only when the "
-        "paper has no values of the asked quantity for this material at all."
+        "If the paper reports the asked quantity for this material and the "
+        "same phenomenon at ANY conditions - even far from those asked - do "
+        'not answer `answered: false`: return a Finding with `match: "nearest"` '
+        "holding the reported values closest to the asked conditions, and "
+        "state the conditions they were reported at. Data on a different "
+        "phenomenon (for example irradiation creep for a thermal-creep "
+        "question) is not nearest data. Use `answered: false` only when the "
+        "paper has no values of the asked quantity for this material and "
+        "phenomenon at all."
     )
 
 

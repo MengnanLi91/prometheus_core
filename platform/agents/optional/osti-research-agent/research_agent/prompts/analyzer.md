@@ -37,16 +37,24 @@ If the paper answers the question, output a Finding:
 {finding_schema}
 
 Set `match` to `"exact"` when the paper reports what was asked at the asked
-conditions. When it reports the same quantity for the same kind of material,
-but not at the exact conditions asked (another temperature, stress, dose, test
-method, or material grade), still return a Finding with `match: "nearest"`,
-however far its conditions are from those asked: give the values at the
+conditions. When it reports the same quantity, for the same phenomenon and
+the same kind of material, but not at the exact conditions asked (another
+temperature, stress, dose, or material grade), still return a Finding with
+`match: "nearest"`, however far its conditions are from those asked: give the values at the
 condition closest to the one asked (for example the lowest temperature the
 paper covers when the question asks below its range), and say plainly in
 `answer` and `evidence` how they differ from what was asked (for example
 "lowest reported: 500 C and 170 MPa; nothing at 400 C and 15 MPa"). Never
 adjust, interpolate, or extrapolate a value toward the asked conditions, and
 never apply a fitted equation outside the range the paper says it covers.
+
+"Same phenomenon" means the same physical process the question asks about,
+not just the same word. Data on a different process is not nearest data: for
+a question about thermal creep, irradiation creep, creep-fatigue or stress
+relaxation are other phenomena; for a question about one corrosion or
+oxidation environment, another environment is another phenomenon. For such a
+paper, return `{{"answered": false, ...}}` and say in `reason` what phenomenon
+it covers instead.
 
 If the paper reports nothing about the asked quantity for this kind of
 material, output instead:

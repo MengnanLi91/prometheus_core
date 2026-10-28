@@ -21,7 +21,10 @@ filesystem calls.
    conditions: accept it when its values are what the paper reports and its
    answer states the conditions they were reported at. Correct `match` to
    `"nearest"` when an `"exact"` candidate's conditions differ from those
-   asked, and reject any value adjusted or extrapolated toward them.
+   asked, and reject any value adjusted or extrapolated toward them. Reject
+   a `nearest` candidate whose data is for a different phenomenon than the
+   question asks about (for example irradiation creep for a thermal-creep
+   question), even when its values are reported correctly.
 5. Correct a candidate only when the artifacts directly support the corrected
    text. Do not add outside knowledge.
 

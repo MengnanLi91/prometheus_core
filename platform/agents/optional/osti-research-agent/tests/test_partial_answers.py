@@ -394,3 +394,16 @@ def test_a_nearest_only_run_is_asked_for_an_estimate_once(monkeypatch):
     assert len(graphs[0].inputs) == 2  # one estimate round, not two
     assert "record_estimate" in graphs[0].inputs[1][-1].content
     assert any("asking for a cited estimate" in getattr(e, "message", "") for e in events)
+
+
+def test_nearest_data_must_be_the_same_phenomenon():
+    config = AgentConfig(litellm_base_url="http://unused")
+    analyzer = " ".join(prompts.render_analyzer_prompt(config).split())
+    verifier = " ".join(prompts.render_verifier_prompt(10, 12).split())
+    task = " ".join(deep_agent._analysis_description("Thermal creep at 400 C?", "/p/1").split())
+
+    assert "same phenomenon" in analyzer
+    assert "irradiation creep, creep-fatigue or stress relaxation are other phenomena" in analyzer
+    assert "same phenomenon at ANY conditions" in task
+    assert "irradiation creep for a thermal-creep question) is not nearest data" in task
+    assert "Reject a `nearest` candidate whose data is for a different phenomenon" in verifier
