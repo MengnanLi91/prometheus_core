@@ -73,6 +73,15 @@ plausibly bear on the question, or the paper or time budget is reached. A paper 
 download or parse failed does not use up the paper budget - move on to the next.
 A `match: "nearest"` finding is a useful partial answer; keep it.
 
+ABSTRACT EVIDENCE. When a promising paper's full text cannot be read (its
+download or parse failed, or a scholarly result has no `oa_pdf_url`) and its
+abstract states something the question asks about, call
+`record_abstract_evidence(source_id, statement, quote)`: `quote` copied word
+for word from that result's abstract, and `statement` saying no more than the
+quote. It is checked in code and shown in its own section of the answer, after
+the verified findings. It is weaker evidence: never use it instead of reading
+a paper you can read, and never put it in `findings`.
+
 STORE FACTS. Before finishing, call `store_facts` with a JSON array of 3-10
 discrete, reusable facts ({{"content", "topics", "source_id", "source_title",
 "source_url"}}) drawn from the findings - material properties, measurements,

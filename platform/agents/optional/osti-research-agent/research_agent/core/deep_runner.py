@@ -57,6 +57,7 @@ _TOOL_STATUS = {
     "search_knowledge_base": "Checking knowledge base...",
     "store_facts": "Storing facts in knowledge base...",
     "write_todos": "Updating plan...",
+    "record_abstract_evidence": "Checking a statement against an abstract...",
 }
 
 
@@ -222,6 +223,49 @@ def _render_grounded_answer(answers: List[Dict]) -> str:
     return "\n\n".join(sections)
 
 
+def _link(title: str, url: str, source_id: str) -> str:
+    title = " ".join(str(title or source_id).split()).replace("[", "(").replace("]", ")")
+    return f"[{title}]({url})" if url else title
+
+
+def _render_weaker_evidence(ctx: RunContext) -> str:
+    """Abstract evidence, rendered after the verified findings and clearly
+    labelled; every line was checked in code (tools/evidence.py)."""
+    if not ctx.abstract_evidence:
+        return ""
+    lines = [
+        "## From abstracts (full text not available)",
+        "These statements come only from the abstracts of papers whose full "
+        "text could not be read. They were checked against the abstract text, "
+        "not against the papers themselves.",
+    ]
+    for item in ctx.abstract_evidence:
+        lines.append(
+            f"- {item['statement']} - abstract of "
+            f"{_link(item['title'], item['url'], item['source_id'])}: "
+            f"\"{item['quote']}\""
+        )
+    return "\n\n".join(lines[:2]) + "\n\n" + "\n".join(lines[2:])
+
+
+def _weaker_provenance(ctx: RunContext) -> List[Dict]:
+    seen, out = set(), []
+    for item in ctx.abstract_evidence:
+        if item["source_id"] in seen:
+            continue
+        seen.add(item["source_id"])
+        out.append(
+            {
+                "source": f"abstract: {item['source_id']}",
+                "title": item["title"],
+                "url": item["url"],
+                "excerpt": item["quote"][:500],
+                "evidence": "abstract",
+            }
+        )
+    return out
+
+
 async def build_final_result(
     question: str, final_text: str, ctx: RunContext
 ) -> FinalResult:
@@ -273,6 +317,13 @@ async def build_final_result(
     answer_text = citations.linkify_paper_references(
         answer_text, provenance, paper_to_provenance
     )
+    # Only the verified part is cached: later runs treat cached answers as
+    # retrieval hints, and the weaker sections below must not become one.
+    verified_answer = answer_text
+    weaker = _render_weaker_evidence(ctx)
+    if weaker:
+        answer_text = f"{answer_text}\n\n{weaker}"
+        provenance = provenance + _weaker_provenance(ctx)
 
     # From the verified findings only - not the rendered answer or search
     # titles - so a suggestion never builds on unverified material.
@@ -286,7 +337,7 @@ async def build_final_result(
     if status == "completed" and ctx.knowledge is not None:
         # A retrieval hint for later runs (search_knowledge_base); those runs
         # still re-verify the sources before using any of it.
-        await ctx.knowledge.cache_answer(question, answer_text, provenance)
+        await ctx.knowledge.cache_answer(question, verified_answer, provenance)
 
     return FinalResult(
         status=status,
