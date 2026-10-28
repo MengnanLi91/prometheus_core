@@ -75,8 +75,41 @@ def citations_valid(text: str, paper_count: int) -> bool:
     return bool(cited) and all(1 <= n <= paper_count for n in cited)
 
 
+def _grader_class():
+    """RubricMiddleware that also accepts a GraderResponse written as JSON text.
+
+    The grader's model can't be forced to call the GraderResponse tool on
+    Bedrock (it rejects forced tool choice), so with an "auto" choice it may
+    answer in text instead. Those verdicts were lost as grader_error; a JSON
+    reply is now parsed and validated like the structured one. Anything else
+    still fails, so a bad reply never passes the grade."""
+    from deepagents.middleware.rubric import GraderResponse, RubricMiddleware
+
+    class TextTolerantRubricMiddleware(RubricMiddleware):
+        @staticmethod
+        def _extract_graded(result):
+            if result.get("structured_response") is not None:
+                return RubricMiddleware._extract_graded(result)
+            graded = _graded_from_text(result)
+            if graded is None:
+                return RubricMiddleware._extract_graded(result)  # raises
+            return GraderResponse.model_validate(graded)
+
+    return TextTolerantRubricMiddleware
+
+
+def _graded_from_text(result: Dict) -> Optional[Dict]:
+    """The GraderResponse JSON object in the grader's last text reply, if any."""
+    from research_agent import llm_steps
+
+    text = _last_ai_text(result)
+    parsed = llm_steps.extract_json_from_text(text) if text else None
+    if isinstance(parsed, dict) and {"result", "criteria"} <= set(parsed):
+        return parsed
+    return None
+
+
 def _build_synthesizer(config: AgentConfig, payload: List[Dict], on_evaluation):
-    from deepagents.middleware.rubric import RubricMiddleware
     from langchain.agents import create_agent
     from langchain_core._api.beta_decorator import LangChainBetaWarning
     from langchain_core.tools import tool
@@ -93,7 +126,7 @@ def _build_synthesizer(config: AgentConfig, payload: List[Dict], on_evaluation):
     # answer; tests/test_synthesis.py pins the API it relies on instead.
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", LangChainBetaWarning)
-        grader = RubricMiddleware(
+        grader = _grader_class()(
             # The grader's structured GraderResponse would otherwise force a
             # tool call, which Claude on Bedrock rejects with a 400.
             model=chat_model(config, "verifier", forced_tool_choice=False),

@@ -197,3 +197,56 @@ def test_grader_model_never_forces_a_tool_choice(monkeypatch):
 
     assert ("verifier", {"forced_tool_choice": False}) in _run.calls
     assert ("orchestrator", {}) in _run.calls
+
+
+def _grade_as_text(result, prose=""):
+    passed = result == "satisfied"
+    criterion = {"name": "claims are cited", "passed": passed}
+    if not passed:
+        criterion["gap"] = "the second sentence has no citation"
+    verdict = {"result": result, "explanation": "x", "criteria": [criterion]}
+    return AIMessage(content=prose + json.dumps(verdict))
+
+
+def test_a_grader_verdict_in_text_is_used(monkeypatch):
+    # Bedrock can't force the GraderResponse tool call, so the grader may
+    # answer in text; that verdict must not be lost as grader_error.
+    grader = _FakeChat(responses=[_read_findings(), _grade_as_text("satisfied")])
+    writer = _FakeChat(responses=[AIMessage(content=GOOD)])
+
+    assert _run(monkeypatch, writer, grader) == GOOD
+
+
+def test_a_text_verdict_can_ask_for_a_revision(monkeypatch):
+    grader = _FakeChat(responses=[
+        _read_findings(),
+        _grade_as_text("needs_revision", prose="Here is my verdict: "),
+        _grade_as_text("satisfied"),
+    ])
+    writer = _FakeChat(responses=[AIMessage(content="Creeps. (Paper 1)"), AIMessage(content=GOOD)])
+
+    assert _run(monkeypatch, writer, grader) == GOOD
+
+
+def test_a_text_reply_without_a_verdict_still_falls_back(monkeypatch):
+    grader = _FakeChat(responses=[_read_findings(), AIMessage(content="Looks good to me.")])
+    writer = _FakeChat(responses=[AIMessage(content=GOOD)])
+
+    assert _run(monkeypatch, writer, grader) is None
+
+
+def test_an_inconsistent_text_verdict_is_refused(monkeypatch):
+    # "satisfied" with a failing criterion is invalid GraderResponse.
+    bad = {"result": "satisfied", "explanation": "x",
+           "criteria": [{"name": "c", "passed": False, "gap": "g"}]}
+    grader = _FakeChat(responses=[_read_findings(), AIMessage(content=json.dumps(bad))])
+    writer = _FakeChat(responses=[AIMessage(content=GOOD)])
+
+    assert _run(monkeypatch, writer, grader) is None
+
+
+def test_the_rubric_shows_the_text_verdict_format():
+    rubric = (synthesis._PROMPTS_DIR / "synthesis_rubric.md").read_text()
+
+    assert "reply with only its JSON object" in rubric
+    assert '"result": "satisfied" | "needs_revision" | "failed"' in rubric

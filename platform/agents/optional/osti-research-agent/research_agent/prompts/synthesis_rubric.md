@@ -19,3 +19,9 @@ Criteria:
 6. The answer states its limitations.
 7. Every finding whose `match` is `nearest` is presented as data at the
    conditions it was reported at, not as the value at the asked conditions.
+
+
+Return your verdict by calling the `GraderResponse` tool. If you cannot call
+it, reply with only its JSON object and nothing else:
+{"result": "satisfied" | "needs_revision" | "failed", "explanation": "...",
+"criteria": [{"name": "...", "passed": true}, {"name": "...", "passed": false, "gap": "..."}]}
