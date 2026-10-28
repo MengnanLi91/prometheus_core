@@ -22,6 +22,10 @@ import { LeftPanel } from "../components/LeftPanel";
 import { Home } from "../components/dashboard/Home";
 import { ComingSoon } from "../components/dashboard/ComingSoon";
 import { navLabel, type NavId } from "../components/dashboard/nav";
+import { PageAgentRegistry } from "../pages/PageAgentRegistry";
+import { PageDataManagement } from "../pages/PageDataManagement";
+import { PageProjectManagement } from "../pages/PageProjectManagement";
+import { PageWorkflows } from "../pages/PageWorkflows";
 
 interface Props {
   onLogout: () => void;
@@ -76,9 +80,16 @@ export function ProjectView({ onLogout }: Props) {
               <Home />
             </div>
             {activeNav === "admin" && currentUser?.role === "admin" && <AdminSection />}
-            {activeNav !== "home" && activeNav !== "admin" && (
-              <ComingSoon label={navLabel(activeNav)} />
-            )}
+            {activeNav === "workflows" && <PageWorkflows />}
+            {activeNav === "agent-registry" && <PageAgentRegistry />}
+            {activeNav === "data-management" && <PageDataManagement />}
+            {activeNav === "project-management" && <PageProjectManagement />}
+            {activeNav !== "home" &&
+              activeNav !== "admin" &&
+              activeNav !== "workflows" &&
+              activeNav !== "agent-registry" &&
+              activeNav !== "data-management" &&
+              activeNav !== "project-management" && <ComingSoon label={navLabel(activeNav)} />}
           </main>
         </div>
 

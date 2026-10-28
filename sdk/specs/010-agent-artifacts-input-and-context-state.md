@@ -10,7 +10,7 @@ Let agents request missing structured input, persist per-conversation state, pub
 ## Requirements
 - REQ-010-01: `MissingInput` and `build_input_required_payload(...)` MUST serialize missing input descriptors under `missing_inputs` and include a stripped `hint`.
 - REQ-010-02: `send_input_required(...)` MUST emit a final `input_required` status whose message part is a JSON `DataPart` with canonical missing-input payload.
-- REQ-010-03: `get_provided_inputs(...)` MUST merge structured `DataPart` content, preferring `provided_inputs` when present and otherwise merging the data object.
+- REQ-010-03: `get_input_sources(...)` MUST return the `inputSources` message-metadata map (parameter name → `"model"`, `"user"`, or `"context"`) as strings, and `{}` when the message or the map is missing.
 - REQ-010-04: `load_context_state(...)` and `save_context_state(...)` MUST scope state by normalized producer agent ID and A2A `context_id`.
 - REQ-010-05: `ContextStateStore.load(...)` MUST return `{}` for blank IDs, missing state, corrupt JSON, or non-dict payloads; `save(...)` MUST reject blank agent/context IDs.
 - REQ-010-06: `ArtifactReference` MUST serialize to/from a normalized JSON-compatible dict and MUST normalize native A2A file, data, and text artifact payloads.
@@ -24,6 +24,7 @@ Let agents request missing structured input, persist per-conversation state, pub
 - REQ-010-14: `send_conversation_message(...)` MUST emit a JSON artifact named `conversation_message` with metadata `kind=conversation_message`.
 - REQ-010-15: `get_artifact_file_path(...)` MUST require a conversation ID or context, resolve from registry or provided artifact catalog, and cache provided catalog entries when possible.
 - REQ-010-16: Artifact resolution MUST materialize inline JSON/text to cache files, download non-local URI artifacts through `fsspec`, and validate local `file://` or absolute paths against allowed roots.
+- REQ-010-17: Late-supplied inputs (INPUT_REQUIRED answers, context fills) MUST arrive in `params` together with every original argument; there is no separate provided-inputs channel. ⚠ untested
 
 ## Behavior
 - BEH-010-01: GIVEN `send_input_required(...)` is called WHEN the event is inspected THEN its status is final `input_required` and the missing input is in a `DataPart`.
@@ -31,10 +32,10 @@ Let agents request missing structured input, persist per-conversation state, pub
 - BEH-010-03: GIVEN a local `file://` artifact outside allowed roots WHEN resolving it to a path THEN `PermissionError` is raised.
 
 ## Interfaces
-- `MissingInput(name: str, description: str, user_prompt: str, type: str, options: list[str] | None = None, resolvable_from_context: bool = False, sensitive: bool = False, required: bool = True)`
+- `MissingInput(name: str, description: str, user_prompt: str, type: str, options: list[str] | None = None, resolvable_from_context: bool = False, required: bool = True)`
 - `build_input_required_payload(missing_inputs: list[MissingInput], hint: str) -> dict[str, Any]`
 - `PrometheusAgent.send_input_required(context, event_queue, *, missing_inputs: list[MissingInput], hint: str, metadata: dict | None = None) -> None`
-- `PrometheusAgent.get_provided_inputs(context: RequestContext) -> dict[str, Any]`
+- `PrometheusAgent.get_input_sources(context: RequestContext) -> dict[str, str]`
 - `PrometheusAgent.load_context_state(context_id: str) -> dict[str, Any]`
 - `PrometheusAgent.save_context_state(context_id: str, state: dict[str, Any]) -> None`
 - `PrometheusAgent.register_artifact_reference(context: RequestContext, reference: ArtifactReference) -> ArtifactReference`

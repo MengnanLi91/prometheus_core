@@ -81,7 +81,8 @@ Subclasses override `async _execute(self, params, context: RequestContext, event
 - `send_artifact_reference(...)` — URI-backed file artifact (e.g. `deeplynx://...`)
 - `send_json_artifact(..., catalog_artifact=True)` — reusable inline JSON artifact
 - `send_conversation_message(...)` — durable chat-visible message
-- `send_input_required(missing_inputs=[MissingInput(...)])` — INPUT_REQUIRED with canonical payload
+- `send_input_required(missing_inputs=[MissingInput(...)])` — INPUT_REQUIRED with canonical payload. On resume the answers arrive merged into `params` with every original argument; there is no separate provided-inputs channel
+- `get_input_sources(context)` — who supplied each param (`"model"` / `"user"` / `"context"`), from `inputSources` message metadata
 - `load_context_state(...)` / `save_context_state(...)` — per-`contextId` resumable state via `ContextStateStore`
 
 The agent module also re-exports common A2A types (`RequestContext`, `EventQueue`, `TaskState`, `TaskStatus`, `TaskStatusUpdateEvent`, `TaskArtifactUpdateEvent`, `Artifact`, `TextPart`) from `prometheus_api.agent`, so subclasses normally don't need to import directly from `a2a.*`.
