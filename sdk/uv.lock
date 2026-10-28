@@ -1407,7 +1407,7 @@ wheels = [
 
 [[package]]
 name = "prometheus-api"
-version = "0.14.1"
+version = "0.15.0"
 source = { editable = "." }
 dependencies = [
     { name = "a2a-sdk", extra = ["http-server"] },

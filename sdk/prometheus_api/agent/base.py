@@ -23,10 +23,22 @@ import logging
 import uuid
 import asyncio
 from contextlib import asynccontextmanager, suppress
+from contextvars import ContextVar
 from dataclasses import asdict, dataclass, field
-from typing import Any, AsyncIterator, Awaitable, Callable, Dict, List, Mapping, Optional
-from typing import Sequence, cast
-from datetime import datetime
+from typing import (
+    Any,
+    AsyncContextManager,
+    AsyncIterator,
+    Awaitable,
+    Callable,
+    Dict,
+    List,
+    Mapping,
+    Optional,
+    Sequence,
+    cast,
+)
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse
 from google.protobuf.json_format import MessageToDict, ParseDict
@@ -85,11 +97,19 @@ from .worker import PrometheusWorker
 from .registry import AgentRegistryClient
 from ..storage_client.async_client import AsyncStorageClient
 from ..storage_client.connection import ConnectionConfig
-from ..storage_client.models.item import ItemUpdate
+from ..storage_client.models.item import ItemCreate, ItemUpdate
+from ..llm_client.security import redact_secrets
 import uvicorn
 
 logger = logging.getLogger(__name__)
 _WORKFLOW_FILE_SUFFIXES = {".json", ".yaml", ".yml"}
+
+
+_ExecutionScope = Callable[
+    [Dict[str, Any], RequestContext],
+    AsyncContextManager[None],
+]
+_UNSET_EXECUTION_RECORD = object()
 
 
 class _TrackedEventQueue:
@@ -245,18 +265,22 @@ class PrometheusAgentExecutor(AgentExecutor):
                 # Extract parameters from the message (injects params["user_id"])
                 params = self._extract_params(context)
 
-                # Send "working" status
-                await emit_status_update(
-                    context=context,
-                    event_queue=tracked_queue,
-                    state=TaskState.TASK_STATE_WORKING,
-                    final=False,
-                )
+                # Standard delegating executors may establish request-scoped state
+                # before any work status or agent code runs. The bare executor's
+                # default scope is a storage-independent no-op.
+                async with self._establish_request_scope(params, context):
+                    # Send "working" status
+                    await emit_status_update(
+                        context=context,
+                        event_queue=tracked_queue,
+                        state=TaskState.TASK_STATE_WORKING,
+                        final=False,
+                    )
 
-                # Perform the main analysis (implemented by subclass), with a
-                # background keepalive so streaming connections do not time out
-                # during long gaps between substantive status updates.
-                result = await self._execute_with_heartbeat(params, context, tracked_queue)
+                    # Perform the main analysis (implemented by subclass), with a
+                    # background keepalive so streaming connections do not time out
+                    # during long gaps between substantive status updates.
+                    result = await self._execute_with_heartbeat(params, context, tracked_queue)
 
             # Agent can fully control finalization for advanced/streaming use cases.
             # If it already emitted a final status, skip automatic completion events.
@@ -299,6 +323,15 @@ class PrometheusAgentExecutor(AgentExecutor):
                     final=True,
                 )
             raise
+
+    @asynccontextmanager
+    async def _establish_request_scope(
+        self,
+        params: Dict[str, Any],
+        context: RequestContext,
+    ) -> AsyncIterator[None]:
+        """Establish optional request state before working status and agent work."""
+        yield
 
     @staticmethod
     def _heartbeat_interval() -> float:
@@ -564,9 +597,24 @@ class DelegatingPrometheusAgentExecutor(PrometheusAgentExecutor):
             [Dict[str, Any], RequestContext, EventQueue],
             Awaitable[Dict[str, Any]],
         ],
+        execution_scope: Optional[_ExecutionScope] = None,
     ):
         super().__init__(agent_name=agent_name)
         self._execute_fn = execute_fn
+        self._execution_scope = execution_scope
+
+    @asynccontextmanager
+    async def _establish_request_scope(
+        self,
+        params: Dict[str, Any],
+        context: RequestContext,
+    ) -> AsyncIterator[None]:
+        """Enter the optional owning-agent scope before work begins."""
+        if self._execution_scope is None:
+            yield
+            return
+        async with self._execution_scope(params, context):
+            yield
 
     async def _execute(
         self,
@@ -647,6 +695,10 @@ class PrometheusAgent:
         self._custom_http_routes: List[_AgentHTTPRoute] = []
         self._custom_static_endpoints: List[_AgentStaticEndpoint] = []
         self.executor: Optional[PrometheusAgentExecutor] = None
+        self._execution_record_id: ContextVar[object] = ContextVar(
+            f"prometheus_execution_record_id_{id(self)}",
+            default=_UNSET_EXECUTION_RECORD,
+        )
         self.artifact_registry = ArtifactRegistry()
         self.artifact_resolver = ArtifactResolver(self.artifact_registry)
         self.context_state_store = ContextStateStore()
@@ -1409,6 +1461,115 @@ class PrometheusAgent:
             backoff_factor=backoff_factor,
         )
 
+    @property
+    def execution_record_id(self) -> Optional[int]:
+        """DeepLynx execution item ID for the active request, if any."""
+        value = self._execution_record_id.get()
+        return value if isinstance(value, int) else None
+
+    def _get_execution_skill_label(self, params: Dict[str, Any]) -> Optional[str]:
+        """Return the invoked skill's display name, ID fallback, or ``None``."""
+        raw_skill_id = params.get("skill_id")
+        skill_id = str(raw_skill_id).strip() if raw_skill_id is not None else ""
+        if not skill_id:
+            return None
+
+        for skill in getattr(self.agent_card, "skills", []) or []:
+            if str(skill.id) == skill_id:
+                skill_name = str(skill.name).strip()
+                return skill_name or skill_id
+        return skill_id
+
+    @staticmethod
+    def _truncate_name_value(value: str, limit: int) -> str:
+        """Truncate a quoted name value without breaking its surrounding syntax."""
+        if len(value) <= limit:
+            return value
+        if limit <= 0:
+            return ""
+        if limit == 1:
+            return "…"
+        return value[: limit - 1] + "…"
+
+    def _build_execution_record_name(
+        self,
+        params: Dict[str, Any],
+        *,
+        user_id: str,
+        created_at: str,
+    ) -> str:
+        """Build a human-readable, skill-oriented execution item name."""
+        skill_label = self._get_execution_skill_label(params)
+        if skill_label is None:
+            fixed_length = len("'' execution by '' at ''") + len(user_id) + len(created_at)
+            agent_name = self._truncate_name_value(self.agent_name, 499 - fixed_length)
+            return f"'{agent_name}' execution by '{user_id}' at '{created_at}'"
+
+        fixed_length = len("'' executed skill '' by '' at ''") + len(user_id) + len(created_at)
+        label_budget = max(0, 499 - fixed_length)
+        agent_budget = min(len(self.agent_name), label_budget // 2)
+        skill_budget = min(len(skill_label), label_budget - agent_budget)
+        agent_budget = min(len(self.agent_name), label_budget - skill_budget)
+        agent_name = self._truncate_name_value(self.agent_name, agent_budget)
+        skill_name = self._truncate_name_value(skill_label, skill_budget)
+        return f"'{agent_name}' executed skill '{skill_name}' by '{user_id}' at '{created_at}'"
+
+    @asynccontextmanager
+    async def _create_execution_record(
+        self,
+        params: Dict[str, Any],
+        context: RequestContext,
+    ) -> AsyncIterator[None]:
+        """Create and bind the request's durable DeepLynx execution record."""
+        identity = get_current_identity()
+        if identity is None:
+            raise RuntimeError("Execution records require a verified request identity")
+
+        task_id = context_task_id(context)
+        context_id = event_context_id(context)
+        created_at = datetime.now(timezone.utc).isoformat()
+        producer_id = self._producer_agent_id
+        properties = {
+            "agent_name": self.agent_name,
+            "producer_agent_id": producer_id,
+            "authenticated_user_id": identity.user_id,
+            "task_id": task_id,
+            "context_id": context_id,
+            # DeepLynx limits record properties to three container levels. Agent
+            # parameters are arbitrary JSON (artifact catalogs alone can exceed
+            # that), so redact them while structured and persist the snapshot as
+            # JSON text rather than embedding it in the properties tree.
+            "parameters_json": json.dumps(
+                redact_secrets(params),
+                sort_keys=True,
+                separators=(",", ":"),
+                default=str,
+            ),
+            "created_at": created_at,
+        }
+        credential = await self.get_credential("deeplynx")
+        config = ConnectionConfig.from_credential(credential)
+        execution_name = self._build_execution_record_name(
+            params,
+            user_id=identity.user_id,
+            created_at=created_at,
+        )
+        item_create = ItemCreate(
+            name=execution_name,
+            description=f"Execution record for task {task_id}",
+            properties=properties,
+            class_id=None,
+            original_id=f"prometheus-execution:{producer_id}:{task_id}",
+        )
+        async with AsyncStorageClient(config) as client:
+            item = await client.items.create(item_create)
+
+        token = self._execution_record_id.set(item.id)
+        try:
+            yield
+        finally:
+            self._execution_record_id.reset(token)
+
     def create_executor(self) -> PrometheusAgentExecutor:
         """
         Create the agent executor.
@@ -1423,6 +1584,7 @@ class PrometheusAgent:
         return DelegatingPrometheusAgentExecutor(
             agent_name=self.agent_name,
             execute_fn=self._execute,
+            execution_scope=self._create_execution_record,
         )
 
     async def _execute(
@@ -1936,6 +2098,37 @@ class PrometheusAgent:
         except Exception:
             logger.exception("Background registry registration task failed unexpectedly")
 
+    @staticmethod
+    def _validate_deeplynx_configuration() -> None:
+        """Fail startup when required DeepLynx environment values are invalid."""
+        broker = os.getenv("CREDENTIAL_BROKER", "env").strip().lower()
+        if broker not in ("env", ""):
+            raise RuntimeError(f"Credential broker '{broker}' not implemented")
+
+        jwt_token = os.getenv("DEEPLYNX_JWT_TOKEN", "").strip()
+        key = os.getenv("DEEPLYNX_KEY", "").strip()
+        secret = os.getenv("DEEPLYNX_SECRET", "").strip()
+        if jwt_token and (key or secret):
+            raise RuntimeError(
+                "Invalid required DeepLynx configuration: set DEEPLYNX_JWT_TOKEN or "
+                "DEEPLYNX_KEY + DEEPLYNX_SECRET, not both"
+            )
+        if not jwt_token and not (key and secret):
+            raise RuntimeError(
+                "Invalid required DeepLynx configuration: set DEEPLYNX_JWT_TOKEN or "
+                "DEEPLYNX_KEY + DEEPLYNX_SECRET"
+            )
+
+        missing = [
+            name
+            for name in ("DEEPLYNX_ORG_ID", "DEEPLYNX_PROJECT_ID")
+            if not os.getenv(name, "").strip()
+        ]
+        if missing:
+            raise RuntimeError(
+                "Invalid required DeepLynx configuration: missing " + ", ".join(missing)
+            )
+
     @asynccontextmanager
     async def _application_lifespan(
         self,
@@ -1944,7 +2137,8 @@ class PrometheusAgent:
         *,
         register_on_startup: bool,
     ) -> AsyncIterator[None]:
-        """Run subclass lifespan and start registry registration in the background."""
+        """Validate required storage config, run subclass lifespan, and register."""
+        self._validate_deeplynx_configuration()
         registration_task: Optional[asyncio.Task[None]] = None
         async with self.lifespan(app):
             if register_on_startup:
