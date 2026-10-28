@@ -12,24 +12,21 @@
 
 """Knowledge-base tools for the deep-agent orchestrator.
 
-When ``ctx.knowledge`` is an embedding-backed
-:class:`~research_agent.knowledge.KnowledgeStore`, ``search_knowledge_base``
-returns semantically-ranked facts plus any near-duplicate cached answer, and
-``store_facts`` persists facts with per-fact embeddings. When it's absent, both
-fall back to the legacy Redis atomic-fact functions in ``research_agent.memory`` so
-older callers and unit tests keep working. Both degrade to no-ops without Redis.
+``search_knowledge_base`` returns semantically-ranked facts plus any
+near-duplicate cached answer from ``ctx.knowledge`` (an embedding-backed
+:class:`~research_agent.knowledge.KnowledgeStore`), and ``store_facts`` persists
+facts with per-fact embeddings. Both are no-ops when there is no knowledge store
+(no Redis).
 """
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 from typing import List
 
 from langchain_core.tools import BaseTool, tool
 
-from research_agent import memory as kb
 from research_agent.tools.context import RunContext
 
 logger = logging.getLogger(__name__)
@@ -71,20 +68,7 @@ def build_memory_tools(ctx: RunContext) -> List[BaseTool]:
                 }
             )
 
-        # Legacy fallback: LLM-selected atomic facts, returned as a list.
-        atomic_facts = await kb.search_relevant_atomic_facts(
-            query, ctx.complete, ctx.redis_client
-        )
-        out = [
-            {
-                "content": f.get("content", ""),
-                "source_osti_id": (f.get("source_paper") or {}).get("osti_id", ""),
-                "title": (f.get("source_paper") or {}).get("title", ""),
-                "url": (f.get("source_paper") or {}).get("url", ""),
-            }
-            for f in atomic_facts
-        ]
-        return json.dumps(out)
+        return json.dumps({"cached_answer": None, "facts": []})
 
     @tool
     async def store_facts(facts_json: str) -> str:
@@ -115,25 +99,17 @@ def build_memory_tools(ctx: RunContext) -> List[BaseTool]:
             title = fact.get("source_title") or hit.get("title", "")
             url = fact.get("source_url") or hit.get("url", "")
 
-            if ctx.knowledge is not None:
-                fact_id = await ctx.knowledge.store_fact(
-                    content=fact["content"],
-                    source_id=source_id,
-                    source_title=title,
-                    source_url=url,
-                    topics=fact.get("topics", []),
-                    origin=hit.get("origin", "osti"),
-                    question=ctx.question,
-                )
-            else:
-                fact_id = await asyncio.to_thread(
-                    kb.store_atomic_fact,
-                    content=fact["content"],
-                    source_paper={"osti_id": source_id, "title": title, "url": url},
-                    topics=fact.get("topics", []),
-                    question=ctx.question,
-                    redis_client=ctx.redis_client,
-                )
+            if ctx.knowledge is None:
+                continue
+            fact_id = await ctx.knowledge.store_fact(
+                content=fact["content"],
+                source_id=source_id,
+                source_title=title,
+                source_url=url,
+                topics=fact.get("topics", []),
+                origin=hit.get("origin", "osti"),
+                question=ctx.question,
+            )
             if fact_id:
                 stored += 1
         ctx.facts_stored += stored

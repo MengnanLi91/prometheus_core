@@ -16,9 +16,7 @@ caches the whole directory as a tar blob in Redis.
 
     parsed = await parse_paper_pipeline(pdf_path, source_id, config, caches, emit)
 
-This is the default PDF-processing path. The legacy
-``pdf_convert.convert_pdf_to_text_async`` path remains selectable through
-``config.parser == "legacy"``.
+This is the only PDF-processing path.
 """
 
 from __future__ import annotations
@@ -35,7 +33,6 @@ from pathlib import Path
 from typing import Awaitable, Callable, Optional, Tuple
 
 import research_agent
-from research_agent import pdf_convert
 from research_agent.core.config import AgentConfig
 from research_agent.core.llm import LiteLLMVlmClient, VlmCompleteFn
 from research_agent.memory import ArtifactCache
@@ -65,15 +62,23 @@ async def _noop_emit(message: str, **detail) -> None:  # default when no emitter
     return None
 
 
-def _precheck(pdf_path: str) -> Tuple[Optional[int], int]:
-    """(page_count, chars on the first 3 pages). Cheap; used to detect scans."""
+def _pymupdf():
+    """The PyMuPDF module (``pymupdf``, or ``fitz`` on older releases), or None."""
     try:
         import pymupdf as fitz  # noqa: N813
     except Exception:
         try:
             import fitz
         except Exception:
-            return None, 0
+            return None
+    return fitz
+
+
+def _precheck(pdf_path: str) -> Tuple[Optional[int], int]:
+    """(page_count, chars on the first 3 pages). Cheap; used to detect scans."""
+    fitz = _pymupdf()
+    if fitz is None:
+        return None, 0
     try:
         with fitz.open(pdf_path) as doc:
             page_count = doc.page_count
@@ -188,10 +193,30 @@ async def _kill(proc: asyncio.subprocess.Process) -> None:
         await proc.wait()
 
 
+def _pymupdf_text(pdf_path: str) -> str:
+    """Plain text of every page, or "" when PyMuPDF can't read the PDF."""
+    fitz = _pymupdf()
+    if fitz is None:
+        return ""
+    try:
+        with fitz.open(pdf_path) as doc:
+            pages = []
+            for page_number in range(doc.page_count):
+                try:
+                    pages.append(doc.load_page(page_number).get_text() or "")
+                except Exception as e:
+                    logger.warning("[parse] PyMuPDF failed on page %d: %s", page_number + 1, e)
+                    pages.append("")
+            return "\n\n".join(pages)
+    except Exception as e:
+        logger.error("[parse] PyMuPDF could not open %s: %s", pdf_path, e)
+        return ""
+
+
 def _pymupdf_fallback(
     pdf_path: str, outdir: Path, source_id: str, page_count: Optional[int]
 ) -> ParsedPaper:
-    text = pdf_convert._convert_pdf_with_pymupdf(pdf_path)
+    text = _pymupdf_text(pdf_path)
     (outdir / "paper.md").write_text(text, encoding="utf-8")
     parsed = ParsedPaper(
         source_id=source_id,

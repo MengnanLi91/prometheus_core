@@ -795,8 +795,7 @@ jobs:
           TEST_DEPENDENCIES: ${{ matrix.test_dependencies }}
         run: |
           printf '%s\n' "$OVERRIDES" > "$RUNNER_TEMP/overrides.txt"
-          # Space-separated extra test packages; empty for most agents.
-          read -ra test_dependencies <<< "$TEST_DEPENDENCIES"
+
           uv venv
           uv pip install -r pyproject.toml --overrides "$RUNNER_TEMP/overrides.txt" \
             pytest pytest-asyncio pytest-cov "${test_dependencies[@]}" "$GITHUB_WORKSPACE/sdk"

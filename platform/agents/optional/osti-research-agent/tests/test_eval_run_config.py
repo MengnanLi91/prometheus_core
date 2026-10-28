@@ -85,19 +85,14 @@ def test_eval_redis_databases_are_isolated_without_losing_connection_details():
     )
 
 
-def test_multi_engine_eval_assigns_separate_redis_databases(tmp_path, monkeypatch):
+def _single_engine_main(tmp_path, monkeypatch, *extra):
     questions = tmp_path / "questions.yaml"
     questions.write_text("questions:\n  - id: one\n    question: Test question?\n")
-    report = tmp_path / "report.json"
     calls = []
-
     monkeypatch.setattr(
         eval_run,
         "_load_agent_config",
-        lambda: AgentConfig(
-            litellm_base_url="http://unused",
-            redis_url="redis://redis:6379",
-        ),
+        lambda: AgentConfig(litellm_base_url="http://unused", redis_url="redis://redis:6379"),
     )
 
     async def fake_run_engine(engine, specs, base, workdir, redis_db, on_record=None, **kwargs):
@@ -105,49 +100,25 @@ def test_multi_engine_eval_assigns_separate_redis_databases(tmp_path, monkeypatc
         return []
 
     monkeypatch.setattr(eval_run, "_run_engine", fake_run_engine)
-
-    result = asyncio.run(
-        eval_run._main(
-            [
-                "--questions",
-                str(questions),
-                "--engines",
-                "pipeline",
-                "deepagent",
-                "--redis-db-base",
-                "14",
-                "--report",
-                str(report),
-                "--no-judge",
-            ]
-        )
-    )
-
-    assert result == 0
-    assert calls == [("pipeline", 14), ("deepagent", 15)]
+    result = asyncio.run(eval_run._main([
+        "--questions", str(questions), "--report", str(tmp_path / "report.json"),
+        "--no-judge", *extra,
+    ]))
+    return result, calls
 
 
-def test_multi_engine_eval_rejects_shared_redis(tmp_path, monkeypatch):
-    questions = tmp_path / "questions.yaml"
-    questions.write_text("questions:\n  - id: one\n    question: Test question?\n")
-    monkeypatch.setattr(
-        eval_run,
-        "_load_agent_config",
-        lambda: AgentConfig(
-            litellm_base_url="http://unused",
-            redis_url="redis://redis:6379",
-        ),
-    )
+def test_eval_runs_the_deep_engine_by_default(tmp_path, monkeypatch):
+    result, calls = _single_engine_main(tmp_path, monkeypatch)
 
+    assert result == 0 and calls == [("deepagent", None)]
+
+
+def test_redis_db_base_isolates_the_eval_from_the_live_cache(tmp_path, monkeypatch):
+    result, calls = _single_engine_main(tmp_path, monkeypatch, "--redis-db-base", "14")
+
+    assert result == 0 and calls == [("deepagent", 14)]
+
+
+def test_the_removed_pipeline_engine_is_rejected(tmp_path, monkeypatch):
     with pytest.raises(SystemExit):
-        asyncio.run(
-            eval_run._main(
-                [
-                    "--questions",
-                    str(questions),
-                    "--engines",
-                    "pipeline",
-                    "deepagent",
-                ]
-            )
-        )
+        _single_engine_main(tmp_path, monkeypatch, "--engines", "pipeline")

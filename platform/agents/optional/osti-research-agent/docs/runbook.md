@@ -1,20 +1,7 @@
 # OSTI Research Agent — runbook
 
-Operational reference: engine selection, budget tuning, cache keys/TTLs, and how
-to replay a run. Architecture is in `architecture.md`.
-
-## Engine selection and rollback
-
-`AGENT_ENGINE` selects the engine; **default is `deepagent`**.
-
-| Value | Engine | When |
-|-------|--------|------|
-| unset / `deepagent` | deep-agent orchestrator | production default |
-| `pipeline` | legacy fixed pipeline | operational rollback |
-
-Roll back with no rebuild: set `AGENT_ENGINE=pipeline` in `.env` and restart the
-service (or `--engine pipeline` for the CLI). Keep the pipeline implementation
-available while it remains the documented rollback path.
+Operational reference: budget tuning, cache keys/TTLs, and how to replay a run.
+Architecture is in `architecture.md`.
 
 ## Config / tuning knobs
 
@@ -23,7 +10,6 @@ defaults.
 
 | Env var | Default | Effect |
 |---------|---------|--------|
-| `AGENT_ENGINE` | `deepagent` | engine selection (above) |
 | `TOTAL_BUDGET_S` | `900` | hard wall-clock ceiling; runner cancels at `budget-30s` and salvages `timeout_partial` |
 | `MAX_PAPERS_ANALYZED` | `5` | download/parse budget; tools refuse past it |
 | `MAX_OSTI_SEARCHES` | `5` | unique OSTI queries per run |
@@ -40,7 +26,6 @@ defaults.
 | `EMBEDDING_MODEL` | `embedding` | LiteLLM alias for the knowledge-store embeddings |
 | `MAX_PDF_MB` | `50` | maximum download size for arbitrary non-OSTI PDF URLs |
 | `DOWNLOAD_ALLOWED_DOMAINS` | built-in list | comma-separated hosts PDFs may be downloaded from (subdomains included). Others are never fetched, and search results only offer `oa_pdf_url` for them; a host that answers 401/403 is dropped for the rest of the run. The OSTI purl path is always allowed. Default list: `research_agent/download_policy.py` |
-| `PARSER` | `artifacts` | `legacy` forces the old text-blob path |
 | `DOCLING_TIMEOUT_S` | `240` | timeout for the isolated Docling conversion process |
 | `DOCLING_IMAGES_SCALE` | `2.0` | page-image render scale; memory grows with its square, so `1.0` needs about a quarter. Lower it if the worker is killed out of memory ("exited -9") |
 | `DOCLING_TABLE_MODE` | `accurate` | TableFormer mode, `accurate` or `fast` (less memory and time, rougher table structure) |
@@ -75,7 +60,6 @@ facts and cached answers.
 |-----|----------|-----|
 | `osti:paper:pdf_bytes:{osti_id}` | raw downloaded PDF | 30 days |
 | `osti:paper:pdf_bytes:url:{sha256(url)}` | raw PDF from a scholarly/web URL | 30 days |
-| `osti:paper:text:v2:{osti_id}` | extracted text (legacy pipeline) | 30 days |
 | `osti:paper:artifacts:v1:{source_id}` | zipped artifact dir (docling) | 30 days |
 | `osti:paper:figjson:v1:{source_id}:{idx}` | per-figure VLM JSON | 30 days |
 | `osti:factoid:{uuid}` | atomic fact + embedding + source (legacy key name) | **persistent (no TTL)** |
@@ -95,13 +79,12 @@ remaining records on read.
 
 ## Replaying / debugging a run
 
-- **CLI (fastest loop):** reproduce any question locally with only LiteLLM creds:
+- **CLI (fastest loop):** reproduce any question locally with only LLM creds:
   ```
-  uv run python -m research_agent "<the question>" --engine deepagent --workdir ./out
+  uv run python -m research_agent "<the question>" --workdir ./out
   ```
   Progress prints to stderr; the full `FinalResult` lands in `out/result.json`.
-  Add `--no-redis` to rule out a stale cache, or `--engine pipeline` to compare
-  engines.
+  Add `--no-redis` to rule out a stale cache.
 - **LangSmith traces:** the deepagent engine's LangGraph `astream` is traced when
   `LANGCHAIN_TRACING_V2=true` and `LANGCHAIN_API_KEY` are set. A trace shows every
   tool call, subagent turn, and token/latency breakdown. LangGraph does not
@@ -111,9 +94,8 @@ remaining records on read.
   shows the latest status and `LRANGE agent:status_history:{conversation_id} 0 -1`
   the full progress log (10-min TTL) — the first place to look for a stuck run.
 
-## Parity eval
+## Evaluation
 
-`evals/` runs both engines over `evals/questions.yaml` and scores them (see
-`evals/README.md`). Run it after any change that could affect answer quality,
-and before flipping defaults again. This parity gate is manually initiated;
-there is no required fixed-duration production soak before running it.
+`evals/` runs the agent over `evals/questions.yaml` and scores the answers
+(`make osti-eval`; see `evals/README.md`). Run it after any change that could
+affect answer quality.

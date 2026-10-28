@@ -17,7 +17,6 @@ from research_agent.core.config import AgentConfig, _env_bool
 
 def test_from_env_reads_phase2_flags(monkeypatch):
     monkeypatch.setenv("REGISTRY_URL", "http://reg:4000")
-    monkeypatch.setenv("PARSER", "legacy")
     monkeypatch.setenv("PARSE_OCR", "on")
     monkeypatch.setenv("ANALYZE_FIGURES", "true")
     monkeypatch.setenv("ANALYZER_MODEL_CALL_LIMIT", "6")
@@ -35,7 +34,6 @@ def test_from_env_reads_phase2_flags(monkeypatch):
 
     cfg = AgentConfig.from_env()
 
-    assert cfg.parser == "legacy"
     assert cfg.parse_ocr == "on"
     assert cfg.analyze_figures is True
     assert cfg.analyzer_model_call_limit == 6
@@ -54,7 +52,6 @@ def test_from_env_reads_phase2_flags(monkeypatch):
 
 def test_from_env_phase2_defaults(monkeypatch):
     for var in (
-        "PARSER",
         "PARSE_OCR",
         "ANALYZE_FIGURES",
         "ANALYZER_MODEL_CALL_LIMIT",
@@ -76,7 +73,6 @@ def test_from_env_phase2_defaults(monkeypatch):
 
     cfg = AgentConfig.from_env()
 
-    assert cfg.parser == "artifacts"
     assert cfg.parse_ocr == "auto"
     assert cfg.analyze_figures is False
     assert cfg.analyzer_model_call_limit == 8

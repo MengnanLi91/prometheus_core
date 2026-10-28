@@ -10,14 +10,13 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""ResearchRunner: the event-stream boundary between execution engines and
-callers such as the A2A executor and CLI.
+"""ResearchRunner: the event-stream boundary between the deep-agent engine
+and callers such as the A2A executor, the CLI and the evaluation.
 
-Bridges pipeline.answer_question's emit-callback progress reporting to an
-async generator of AgentEvents, and enforces the overall time budget as an
-outer safety net - the pipeline's own internal timeout (perform_literature_search's
-check_timeout, ~14 minutes) is expected to fire first in normal operation;
-this one is for the case where something hangs entirely.
+Runs ``core.deep_runner.run_deep`` as a task, forwards its AgentEvents, and
+enforces the overall time budget as an outer safety net: the tools stop new
+work near the deadline first, and this cancels the run if something hangs,
+salvaging a ``timeout_partial`` from the findings verified so far.
 """
 
 import asyncio
@@ -27,17 +26,16 @@ from typing import AsyncIterator, Dict, List, Optional
 
 import redis
 
-from research_agent import pipeline
 from research_agent.core.config import AgentConfig
-from research_agent.core.events import AgentEvent, FinalResult, Finding, ProgressEvent
+from research_agent.core.events import AgentEvent, FinalResult, Finding
 from research_agent.core.llm import CompleteFn, LiteLLMClient
-from research_agent.memory import PdfCache, RedisCaches, TextCache
+from research_agent.memory import PdfCache, RedisCaches
 
 logger = logging.getLogger(__name__)
 
 
 class ResearchRunner:
-    """Runs the research pipeline and streams its progress as AgentEvents."""
+    """Runs one research question and streams its progress as AgentEvents."""
 
     def __init__(
         self,
@@ -45,7 +43,6 @@ class ResearchRunner:
         complete: Optional[CompleteFn] = None,
         redis_client: Optional[redis.Redis] = None,
         pdf_cache: Optional[PdfCache] = None,
-        text_cache: Optional[TextCache] = None,
     ):
         self.config = config
         route = config.model_route("orchestrator")
@@ -60,8 +57,8 @@ class ResearchRunner:
 
         # Only build a RedisCaches when the caller didn't already hand us one
         # (the A2A executor reuses its own) and config actually has a Redis URL
-        # (the CLI's --no-redis mode leaves this None -> everything degrades
-        # gracefully, per research_agent.memory's Optional[redis.Redis] handling).
+        # (the CLI's --no-redis mode leaves this None -> the caches and the
+        # knowledge base degrade to no-ops).
         caches = (
             RedisCaches(config.redis_url, config.redis_password)
             if config.redis_url
@@ -73,60 +70,16 @@ class ResearchRunner:
             else (caches.client if caches else None)
         )
         self._pdf_cache = pdf_cache if pdf_cache is not None else caches
-        self._text_cache = text_cache if text_cache is not None else caches
 
     async def run(self, question: str, *, run_id: str) -> AsyncIterator[AgentEvent]:
-        """Dispatch on the configured engine. Both engines stream the same
-        AgentEvents behind the same outer-budget safety net; only the job that
-        produces them and the shape of the salvaged partial differ."""
-        if self.config.engine == "deepagent":
-            gen = self._run_deep(question, run_id=run_id)
-        else:
-            gen = self._run_pipeline(question, run_id=run_id)
-        async for event in gen:
-            yield event
-
-    async def _run_pipeline(
-        self, question: str, *, run_id: str
-    ) -> AsyncIterator[AgentEvent]:
-        q: asyncio.Queue = asyncio.Queue()
-        findings: List[Dict] = []
-
-        async def emit(message: str, **detail) -> None:
-            await q.put(ProgressEvent(message=message, detail=detail or None))
-
-        async def _job() -> None:
-            try:
-                result = await pipeline.answer_question(
-                    question,
-                    self._complete,
-                    emit,
-                    self._redis_client,
-                    self._pdf_cache,
-                    self._text_cache,
-                    findings=findings,
-                    config=self.config,
-                    caches=self._pdf_cache,
-                )
-                await q.put(_dict_to_final_result(question, result))
-            except Exception as e:
-                logger.error(f"[{run_id}] Pipeline failed: {e}", exc_info=True)
-                await q.put(
-                    FinalResult(status="error", question=question, answer=str(e))
-                )
-            finally:
-                await q.put(None)
-
-        async for event in self._drain(
-            q, _job, run_id, lambda: _timeout_result(question, findings)
-        ):
+        async for event in self._run_deep(question, run_id=run_id):
             yield event
 
     async def _run_deep(
         self, question: str, *, run_id: str
     ) -> AsyncIterator[AgentEvent]:
-        # Imported lazily: the deep engine pulls in langchain/deepagents, which
-        # the pipeline engine (and pipeline-only deployments) must not require.
+        # Imported lazily so importing the runner (and research_agent's light
+        # modules) doesn't pull in langchain/deepagents.
         from research_agent.core.deep_runner import run_deep
 
         q: asyncio.Queue = asyncio.Queue()
@@ -172,7 +125,7 @@ class ResearchRunner:
         """Run ``job`` as a task, forwarding events off ``q`` until it signals
         completion with ``None``, and enforce the outer time budget - on
         exhaustion, cancel the task and yield ``on_timeout()`` (the salvaged
-        partial for whichever engine is running)."""
+        partial)."""
         task = asyncio.create_task(job())
         deadline = time.monotonic() + max(self.config.total_budget_s - 30, 0)
         try:
@@ -197,52 +150,6 @@ class ResearchRunner:
         finally:
             if not task.done():
                 task.cancel()
-
-
-def _dict_to_final_result(question: str, result: Dict) -> FinalResult:
-    return FinalResult(
-        status=result.get("status", "completed"),
-        question=result.get("question", question),
-        answer=result.get("answer", ""),
-        provenance=result.get("provenance", []),
-        search_query=result.get("search_query"),
-        papers_assessed=result.get("papers_assessed", 0),
-        relevant_papers=result.get("relevant_papers", 0),
-        papers_analyzed=result.get("papers_analyzed", 0),
-        facts_stored=result.get("facts_stored", 0),
-        suggested_queries=result.get("suggested_queries", []),
-        progress_log=result.get("progress_log", []),
-        cached=result.get("cached", False),
-        source=result.get("source"),
-    )
-
-
-def _timeout_result(question: str, findings: List[Dict]) -> FinalResult:
-    if findings:
-        answer = (
-            f"Research timed out after reaching the time budget. Found partial "
-            f"information from {len(findings)} paper(s) before timing out."
-        )
-    else:
-        answer = "Research timed out after reaching the time budget before finding any results."
-
-    provenance = [
-        {
-            "source": f"OSTI #{f.get('osti_id', '')}",
-            "title": f.get("title", ""),
-            "url": f.get("url", ""),
-            "excerpt": (f.get("excerpt") or "")[:500],
-        }
-        for f in findings
-    ]
-
-    return FinalResult(
-        status="timeout_partial",
-        question=question,
-        answer=answer,
-        provenance=provenance,
-        papers_analyzed=len(findings),
-    )
 
 
 def _deep_timeout_result(

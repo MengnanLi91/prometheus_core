@@ -94,8 +94,6 @@ def test_osti_optional_compose_preserves_platform_contract(project_root):
         "USER_IDENTITY_ISS": "${USER_IDENTITY_ISS:-prometheus-platform}",
         "USER_IDENTITY_AUD": "${USER_IDENTITY_AUD:-prometheus-agents}",
         "USER_IDENTITY_REQUIRED": "${USER_IDENTITY_REQUIRED:-true}",
-        "AGENT_ENGINE": "${AGENT_ENGINE:-deepagent}",
-        "PARSER": "${PARSER:-artifacts}",
         "WEB_SEARCH_PROVIDER": "${WEB_SEARCH_PROVIDER:-none}",
         "EMBEDDING_MODEL": "${EMBEDDING_MODEL:-embedding}",
     }.items():

@@ -46,8 +46,6 @@ services:
       DEEPLYNX_ORG_ID: ${DEEPLYNX_ORG_ID:-}
       DEEPLYNX_PROJECT_ID: ${DEEPLYNX_PROJECT_ID:-}
       DEEPLYNX_DATA_SOURCE_ID: ${DEEPLYNX_DATA_SOURCE_ID:-}
-      # Deep Agents is the default; pipeline is the rollback engine.
-      AGENT_ENGINE: ${AGENT_ENGINE:-deepagent}
       TOTAL_BUDGET_S: ${TOTAL_BUDGET_S:-900}
       MAX_PAPERS_ANALYZED: ${MAX_PAPERS_ANALYZED:-5}
       MAX_OSTI_SEARCHES: ${MAX_OSTI_SEARCHES:-5}
@@ -59,7 +57,6 @@ services:
       MAX_PDF_MB: ${MAX_PDF_MB:-50}
       # Comma-separated hosts PDFs may be downloaded from; empty = built-in list.
       DOWNLOAD_ALLOWED_DOMAINS: ${DOWNLOAD_ALLOWED_DOMAINS:-}
-      PARSER: ${PARSER:-artifacts}
       DOCLING_TIMEOUT_S: ${DOCLING_TIMEOUT_S:-240}
       DOCLING_IMAGES_SCALE: ${DOCLING_IMAGES_SCALE:-2.0}
       DOCLING_TABLE_MODE: ${DOCLING_TABLE_MODE:-accurate}

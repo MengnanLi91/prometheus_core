@@ -1,7 +1,7 @@
 # OSTI Research Agent — architecture
 
 How the OSTI research agent is currently structured. For the platform it
-plugs into (LiteLLM gateway, Valkey, A2A), see the repo-root `CLAUDE.md`.
+plugs into (backend agent registry, Valkey, A2A), see the repo-root `CLAUDE.md`.
 
 ## The boundary contract
 
@@ -11,43 +11,39 @@ The code is split into a **transport-agnostic core** and a **thin A2A shell**:
 a2a layer (agent.py)                 <- the ONLY file that may import prometheus_api / a2a
   └─ ResearchRunner.run(question)    <- core/runner.py: the event-stream boundary
        yields AgentEvent = ProgressEvent | FinalResult   (core/events.py)
-         ├─ engine="pipeline"  -> pipeline.answer_question   (legacy, rollback lever)
-         └─ engine="deepagent" -> core/deep_runner.run_deep  (default)
+         └─ core/deep_runner.run_deep   the deep-agent engine
 ```
 
 - **`research_agent/**` imports nothing from `prometheus_api` or `a2a`.** This is
   enforced by `tests/test_import_boundary.py` (a regex over the whole package).
-  The core runs on a laptop with only LiteLLM credentials — see `cli.py`
-  (`python -m research_agent "<question>" --engine deepagent --no-redis`).
-- **`ResearchRunner`** is the single seam every transport goes through. It
-  dispatches on `config.engine`, bridges the engine's progress to an
+  The core runs on a laptop with only LLM credentials — see `cli.py`
+  (`python -m research_agent "<question>" --no-redis`).
+- **`ResearchRunner`** is the single seam every transport goes through. It runs
+  the engine, bridges its progress to an
   `AsyncIterator[AgentEvent]`, and enforces the outer time budget
   (`total_budget_s - 30`), salvaging a `timeout_partial` `FinalResult` from
   whatever findings accumulated if the budget fires.
 - **`FinalResult`** (`core/events.py`) is the wire payload. `core/adapter.py`
   serializes it to the exact JSON key set `agent.py` produced pre-refactor
   (`test_adapter.py` golden-checks this), so the frontend contract is unchanged.
-- **Model routing** resolves `LLMConfig.from_env()` first and attaches a proxy
-  key only when the selected profile has a proxy URL. Deep Agents receives a
-  provider-neutral `ChatLiteLLM` model for registry, direct OpenAI-compatible,
-  and direct Anthropic profiles, including tool binding. No model temperature
+- **Model routing** resolves `LLMConfig.from_env()` and uses the selected
+  profile's endpoints and keys as-is. Deep Agents receives a provider-neutral
+  `ChatLiteLLM` model for OpenAI-compatible and Anthropic profiles, including
+  tool binding. No model temperature
   is forced by the agent; deployed profiles control supported parameters.
 
-## The two engines
+## The engine
 
-Both engines emit the same `AgentEvent` stream and honor the same budget; only
-how they produce results differs.
+`core/deep_runner.py` runs a `deepagents.create_deep_agent` orchestrator
+(LangGraph under the hood) with a compiled `paper-analyzer` task. The task
+first analyzes one parsed paper, then independently verifies the candidate
+against that paper's artifacts before returning anything to the orchestrator.
+The orchestrator decides what to search, download, and analyze; the strategy
+lives in `prompts/orchestrator.md`.
 
-- **`pipeline`** (`pipeline.py` + `llm_steps.py`) — the original fixed sequence
-  (search → assess abstracts → download → extract text → synthesize). Kept as
-  a rollback option selectable with `AGENT_ENGINE=pipeline`.
-- **`deepagent`** (`core/deep_runner.py`) — a `deepagents.create_deep_agent`
-  orchestrator (LangGraph under the hood) with a compiled `paper-analyzer`
-  task. The task first analyzes one parsed paper, then independently verifies
-  the candidate against that paper's artifacts before returning anything to
-  the orchestrator. The orchestrator decides what to search, download, and
-  analyze; the strategy lives in `prompts/orchestrator.md`.
-  This is the **default** (`AGENT_ENGINE` unset ⇒ `deepagent`).
+The agent's original fixed pipeline (search, assess abstracts, download,
+extract text, synthesize) was removed once this engine replaced it; it is in
+git history before the removal if it is ever needed.
 
 The analyzer and verifier are read-only and receive no search, download, or
 parsing tools. Only verified or verifier-corrected findings enter

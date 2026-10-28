@@ -284,7 +284,6 @@ class OSTIResearchAgent(PrometheusAgent):
                 complete=complete,
                 redis_client=self.redis_client,
                 pdf_cache=self._caches,
-                text_cache=self._caches,
             )
 
             async for event in runner.run(question, run_id=conversation_id):
@@ -305,7 +304,7 @@ class OSTIResearchAgent(PrometheusAgent):
         return final.model_dump(mode="json")
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover - script entry point
     # Create and run the agent
     agent = OSTIResearchAgent(agent_name="OSTI Research Agent")
     agent.run()

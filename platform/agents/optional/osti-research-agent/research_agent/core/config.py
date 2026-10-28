@@ -63,8 +63,6 @@ class AgentConfig(BaseModel):
     # a long paper read in chunks needs more turns than the analyzer's own.
     verifier_model_call_limit: int = Field(default=10, ge=1)
     verifier_tool_call_limit: int = Field(default=12, ge=1)
-    # The legacy pipeline remains selectable as a rollback path.
-    engine: Literal["pipeline", "deepagent"] = "deepagent"
 
     # --- Internet search and embedding-backed memory ---
     # Web search is additive and OFF by default: pick a provider only where
@@ -89,11 +87,8 @@ class AgentConfig(BaseModel):
     # path is always allowed. See research_agent.download_policy.
     download_allowed_domains: Tuple[str, ...] = DEFAULT_ALLOWED_DOMAINS
 
-    # --- PDF parsing ---
-    # "artifacts" runs the docling-worker ladder (paper.md + per-table CSV/MD +
-    # per-figure PNG/JSON); "legacy" keeps the old PDF->one-text-blob path
-    # (pdf_convert.convert_pdf_to_text_async) as a rollback option.
-    parser: Literal["artifacts", "legacy"] = "artifacts"
+    # --- PDF parsing (docling worker -> paper.md + per-table CSV/MD +
+    # per-figure PNG/JSON, PyMuPDF text as the fallback) ---
     docling_timeout_s: int = 240
     # Docling memory use. Page images are rendered at this scale and kept for
     # figure crops, so memory grows with its square: 1.0 needs about a quarter
@@ -141,14 +136,12 @@ class AgentConfig(BaseModel):
             max_papers_analyzed=int(os.getenv("MAX_PAPERS_ANALYZED", "5")),
             max_osti_searches=int(os.getenv("MAX_OSTI_SEARCHES", "5")),
             max_scholarly_searches=int(os.getenv("MAX_SCHOLARLY_SEARCHES", "4")),
-            engine=os.getenv("AGENT_ENGINE", "deepagent"),
             analyzer_model_call_limit=int(os.getenv("ANALYZER_MODEL_CALL_LIMIT", "8")),
             analyzer_tool_call_limit=int(os.getenv("ANALYZER_TOOL_CALL_LIMIT", "12")),
             verifier_model_call_limit=int(os.getenv("VERIFIER_MODEL_CALL_LIMIT", "10")),
             verifier_tool_call_limit=int(os.getenv("VERIFIER_TOOL_CALL_LIMIT", "12")),
             max_pdf_mb=int(os.getenv("MAX_PDF_MB", "50")),
             download_allowed_domains=parse_domains(os.getenv("DOWNLOAD_ALLOWED_DOMAINS")),
-            parser=os.getenv("PARSER", "artifacts"),
             docling_timeout_s=int(os.getenv("DOCLING_TIMEOUT_S", "240")),
             docling_images_scale=float(os.getenv("DOCLING_IMAGES_SCALE", "2.0")),
             docling_table_mode=os.getenv("DOCLING_TABLE_MODE", "accurate").strip().lower(),

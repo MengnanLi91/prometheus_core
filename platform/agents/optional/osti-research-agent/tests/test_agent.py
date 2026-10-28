@@ -154,3 +154,143 @@ def test_search_artifact_failure_does_not_fail_the_run():
 
     agent.register_artifact_reference = broken_register
     asyncio.run(agent._send_search_artifacts(object(), object(), _search_result(mod)))
+
+
+class _FakeRedis:
+    def __init__(self, fail=False):
+        self.fail, self.calls = fail, []
+
+    def __getattr__(self, name):
+        def record(*args, **kwargs):
+            if self.fail:
+                raise ConnectionError("redis down")
+            self.calls.append((name, args, kwargs))
+
+        return record
+
+
+def _bare_agent(mod, redis=None):
+    agent = object.__new__(mod.OSTIResearchAgent)
+    agent._caches = SimpleNamespace(client=redis or _FakeRedis(), binary_client="binary")
+    return agent
+
+
+def test_redis_clients_come_from_the_caches():
+    mod = _load_agent_module()
+    redis = _FakeRedis()
+    agent = _bare_agent(mod, redis)
+
+    assert agent.redis_client is redis and agent.redis_binary_client == "binary"
+
+
+def test_init_builds_caches_from_the_environment(monkeypatch):
+    mod = _load_agent_module()
+    monkeypatch.setenv("REDIS_URL", "redis://r:6379")
+    monkeypatch.setenv("REDIS_PASSWORD", "pw")
+    monkeypatch.setattr(mod.PrometheusAgent, "__init__", lambda self, *a, **k: None)
+
+    agent = mod.OSTIResearchAgent()
+
+    assert (agent._caches._redis_url, agent._caches._redis_password) == ("redis://r:6379", "pw")
+
+
+def test_status_is_stored_with_a_bounded_history():
+    mod = _load_agent_module()
+    redis = _FakeRedis()
+    agent = _bare_agent(mod, redis)
+
+    agent._store_status_in_redis("conv-1", "Searching OSTI", final=False)
+
+    names = [name for name, _, _ in redis.calls]
+    assert names == ["set", "rpush", "ltrim", "expire"]
+    assert redis.calls[0][1][0] == "agent:status:conv-1"
+    assert redis.calls[2][1] == ("agent:status_history:conv-1", -200, -1)
+
+
+def test_status_store_skips_without_an_id_and_survives_redis_errors():
+    mod = _load_agent_module()
+    redis = _FakeRedis(fail=True)
+    agent = _bare_agent(mod, redis)
+
+    agent._store_status_in_redis("", "x")
+    agent._store_status_in_redis("conv-1", "x")  # must not raise
+
+
+def _execute_agent(mod, monkeypatch, events):
+    agent = _bare_agent(mod)
+    sent = []
+
+    async def send_status(context, event_queue, message, final=False, conversation_id=None):
+        sent.append(("status", message))
+
+    async def send_final(context, event_queue, text, conversation_id=None):
+        sent.append(("final", text))
+
+    async def send_artifacts(context, event_queue, final):
+        sent.append(("artifacts", final.status))
+
+    agent._send_status, agent._send_final_result = send_status, send_final
+    agent._send_search_artifacts = send_artifacts
+
+    class _LLM:
+        async def medium(self, prompt, *, max_tokens):
+            return SimpleNamespace(text="reply")
+
+    class _Client:
+        async def __aenter__(self):
+            return _LLM()
+
+        async def __aexit__(self, *exc):
+            return False
+
+    agent.llm_client = lambda context, config=None: _Client()
+
+    seen = {}
+
+    class _Runner:
+        def __init__(self, config, *, complete, redis_client, pdf_cache):
+            seen["complete"], seen["pdf_cache"] = complete, pdf_cache
+
+        async def run(self, question, *, run_id):
+            seen["run"] = (question, run_id)
+            for event in events:
+                yield event
+
+    monkeypatch.setattr(mod, "ResearchRunner", _Runner)
+    monkeypatch.setattr(mod.LLMConfig, "from_env", classmethod(lambda cls: SimpleNamespace(proxy_url=None)))
+    monkeypatch.setattr(mod, "apply_model_profile", lambda config, llm: config)
+    return agent, sent, seen
+
+
+def test_execute_streams_progress_then_artifacts_then_the_final_result(monkeypatch):
+    from research_agent.core.events import FinalResult, ProgressEvent
+
+    mod = _load_agent_module()
+    final = FinalResult(status="completed", question="Does Ti creep?", answer="Yes (Paper 1).")
+    agent, sent, seen = _execute_agent(
+        mod, monkeypatch, [ProgressEvent(message="Searching OSTI"), final]
+    )
+
+    result = asyncio.run(agent._execute(
+        {"question": "Does Ti creep?", "conversation_id": "conv-9"},
+        SimpleNamespace(task_id="t", context_id="ctx"), object(),
+    ))
+
+    assert [kind for kind, _ in sent] == ["status", "artifacts", "final"]
+    assert seen["run"] == ("Does Ti creep?", "conv-9")
+    assert seen["pdf_cache"] is agent._caches
+    assert asyncio.run(seen["complete"]("p", max_tokens=5)) == "reply"
+    assert result["status"] == "completed" and '"agent": "OSTI Research Agent"' in sent[-1][1]
+
+
+def test_execute_without_a_question_returns_an_error(monkeypatch):
+    mod = _load_agent_module()
+    agent, sent, _ = _execute_agent(mod, monkeypatch, [])
+
+    result = asyncio.run(agent._execute(
+        {}, SimpleNamespace(task_id="t", context_id="ctx-1"), object(),
+    ))
+
+    assert result == {"status": "error", "error": "Parameter 'question' is required",
+                      "conversation_id": "ctx-1"}
+    assert [kind for kind, _ in sent] == ["final"]

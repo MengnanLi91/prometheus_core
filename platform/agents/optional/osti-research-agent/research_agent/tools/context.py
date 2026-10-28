@@ -56,8 +56,8 @@ class RunContext:
     redis_client: Optional[redis.Redis] = None
     caches: Optional[ArtifactCache] = None
     pdf_cache: Optional[PdfCache] = None
-    # Optional embedding-backed fact/answer store. When None, the memory tools
-    # fall back to the legacy atomic-fact functions in research_agent.memory.
+    # Embedding-backed fact/answer store; None (no Redis) makes the memory
+    # tools no-ops.
     knowledge: Optional["KnowledgeStore"] = None
     run_workdir: Path = field(default_factory=lambda: Path("/tmp/research_agent/run"))
     # time.monotonic() value after which no new expensive work should start.

@@ -104,11 +104,7 @@ def test_pipeline_falls_back_to_pymupdf(tmp_path, monkeypatch):
         return None
 
     monkeypatch.setattr(pp, "_run_docling_worker", no_worker)
-    from research_agent import pdf_convert
-
-    monkeypatch.setattr(
-        pdf_convert, "_convert_pdf_with_pymupdf", lambda p: "FALLBACK TEXT"
-    )
+    monkeypatch.setattr(pp, "_pymupdf_text", lambda p: "FALLBACK TEXT")
 
     parsed = asyncio.run(
         pp.parse_paper_pipeline("dummy.pdf", "42", config, caches=None)
@@ -225,9 +221,7 @@ def test_pipeline_passes_the_memory_settings_to_the_worker(tmp_path, monkeypatch
 
     monkeypatch.setattr(pp, "_precheck", lambda p: (3, 500))
     monkeypatch.setattr(pp, "_run_docling_worker", worker)
-    from research_agent import pdf_convert
-
-    monkeypatch.setattr(pdf_convert, "_convert_pdf_with_pymupdf", lambda p: "TEXT")
+    monkeypatch.setattr(pp, "_pymupdf_text", lambda p: "TEXT")
     asyncio.run(pp.parse_paper_pipeline("d.pdf", "9", config, caches=None))
 
     assert (seen["images_scale"], seen["table_mode"]) == (1.0, "fast")

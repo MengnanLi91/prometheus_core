@@ -66,5 +66,5 @@ def main(argv: Optional[List[str]] = None) -> int:
     return 2
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover - script entry point
     sys.exit(main())

@@ -1,16 +1,14 @@
-# Parity eval harness
+# Evaluation harness
 
-Runs the OSTI research agent over a fixed question set on **both engines**
-(`pipeline` and `deepagent`) and scores the results, so a change to answer
-quality is visible before it ships and the default `deepagent` engine can be
-compared against the `pipeline` baseline.
+Runs the OSTI research agent over a fixed question set and scores the
+answers, so a change to answer quality is visible before it ships.
 
 ## Layout
 
 | File | What |
 |------|------|
 | `questions.yaml` | 51 questions (core / scholarly / web / cache / adversarial) with optional expectations |
-| `run.py` | runs each question through each engine, writes transcripts, scores |
+| `run.py` | runs each question through the agent, writes transcripts, scores |
 | `scoring.py` | pure, offline metrics (unit-tested in `tests/test_eval_scoring.py`) |
 | `report.py` | terminal summary and Markdown report (unit-tested in `tests/test_eval_report.py`) |
 | `judge.py`, `judge_prompt.md` | LLM judge: groundedness, completeness, reference agreement (`tests/test_eval_judge.py`) |
@@ -28,14 +26,14 @@ make osti-eval                        # default: deepagent, first 3 questions
 make osti-eval OSTI_EVAL_LIMIT=10     # first 10 questions
 make osti-eval OSTI_EVAL_LIMIT=       # every question (51; takes hours)
 make osti-eval OSTI_EVAL_LIMIT= OSTI_EVAL_ARGS="--category uq"
-make osti-eval OSTI_EVAL_ENGINES="pipeline deepagent" OSTI_EVAL_ARGS="--redis-db-base 14"
+make osti-eval OSTI_EVAL_ARGS="--redis-db-base 14"   # isolate from the live cache
 make osti-eval-report                 # re-print the latest report
 ```
 
 | Variable | Default | Use |
 |----------|---------|-----|
 | `OSTI_EVAL_LIMIT` | `3` | how many questions to run; empty runs every selected question |
-| `OSTI_EVAL_ENGINES` | `deepagent` | engines to run, e.g. `"pipeline deepagent"` |
+| `OSTI_EVAL_ENGINES` | `deepagent` | engines to run; `deepagent` is the only one |
 | `OSTI_EVAL_ARGS` | (none) | any other `python -m evals run` options (table below) |
 
 The limit applies after `--id`/`--category`: `OSTI_EVAL_LIMIT=5
@@ -62,20 +60,20 @@ summary of the questions already done, and `make osti-eval` still copies the
 partial results back.
 
 `OSTI_EVAL_ARGS` takes any other `python -m evals run` option. (Run
-directly, `python -m evals run` takes `--engines` and `--limit` too; its own
-default is both engines and no limit.)
+directly, `python -m evals run` takes `--limit` too; its own default is no
+limit.)
 
 | Option | Use |
 |--------|-----|
 | `--id <qid>` | only this question; repeatable |
 | `--category <name>` | only this category (`core`, `uq`, `adversarial`, ...); repeatable |
-| `--redis-db-base N` | required for more than one engine: engine 1 uses Redis database N, engine 2 uses N+1; refuses non-empty databases and never clears Redis |
+| `--redis-db-base N` | run against Redis database N instead of the live one, so cached answers from earlier runs can't leak in; refuses a non-empty database and never clears Redis |
 | `--no-redis` | run without Redis (the `cache` questions cannot hit the cache) |
 | `--no-judge` | skip the LLM judge (no judge scores, one fewer model call per question) |
 | `--questions <path>` | another question file |
 
 Each question can take up to `TOTAL_BUDGET_S` (900 s by default) and they run
-one at a time, so the full 51-question set on one engine takes hours. Start
+one at a time, so the full 51-question set takes hours. Start
 with a filter. Rebuild the image after editing `questions.yaml` or anything
 under `evals/` (`make up OPTIONAL_AGENTS=true`): the container runs the copy
 baked into it.
@@ -99,8 +97,7 @@ Three layers — the first two run automatically:
    - `fact_match` — fraction of `expected_facts` substrings present in the
      answer (when the spec lists any).
    - `wall_s` — wall-clock latency (measured directly by `run.py`).
-   `aggregate()` rolls these into per-engine medians, a p90 latency, and pass
-   counts.
+   `aggregate()` rolls these into medians, a p90 latency, and pass counts.
 
    **Cost/tokens are not in `FinalResult`** and so aren't scored here — read
    them per run from LiteLLM's spend logs (or the LangSmith trace) and compare
@@ -131,23 +128,18 @@ Three layers — the first two run automatically:
    safe?" should ask to disambiguate, not fabricate) — and confirm the answer
    matches the cited sources.
 
-## Acceptance criteria for the default engine
+## Acceptance bar
 
-`deepagent` ships as default when, over this set, it:
+Before relying on a change, the agent should, over this set:
 
-- matches or beats `pipeline` on median `source_hit_rate` and `fact_match`
-  (and, from the LLM rubric, on groundedness and completeness),
-- has `provenance_ok` on every `completed` answer and ≥ 90% citation-link
+- have `provenance_ok` on every `completed` answer and ≥ 90% citation-link
   correctness (`median_citation_link_rate`),
-- handles all 5 adversarial questions correctly (no fabricated citations; the
-  no-answer question returns `no_results`; the figure-only question is answered
-  — which the pipeline structurally cannot do),
-- keeps `p90_wall_s` ≤ 15 min hard / ≤ pipeline + 25% soft, and
-- costs ≤ 2× the pipeline per question (read from the spend logs, see above).
+- handle all 5 adversarial questions correctly (no fabricated citations; the
+  no-answer question returns `no_results`; the figure-only question is
+  answered),
+- not drop on median `source_hit_rate`, `fact_match`, or the judge's
+  groundedness and completeness versus the previous run, and
+- keep `p90_wall_s` ≤ 15 min.
 
-Set the bar before running, not after. Latency may regress somewhat versus the
-fixed pipeline — the deep engine trades some speed for coverage — as long as it
-stays under the p90 ceiling and quality wins.
-
-This is a manually initiated parity gate. It does not require a fixed-duration
-production soak before it is run.
+Set the bar before running, not after. Cost isn't in the report; read it from
+the LLM provider's spend logs.

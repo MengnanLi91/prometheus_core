@@ -10,11 +10,11 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""Local dev-loop entry point: run the pipeline against a question with only
-LiteLLM credentials - no A2A, prometheus_api, or Docker required.
+"""Local dev-loop entry point: research a question with only LLM credentials -
+no A2A, prometheus_api, or Docker required.
 
     python -m research_agent "What is the creep rate of SS316 at 400C and 15 MPa?" \\
-        --engine pipeline --no-redis --workdir ./out
+        --no-redis --workdir ./out
 """
 
 import argparse
@@ -33,15 +33,9 @@ def _parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="python -m research_agent")
     parser.add_argument("question", help="Research question to answer")
     parser.add_argument(
-        "--engine",
-        choices=["pipeline", "deepagent"],
-        default=None,
-        help="Overrides AGENT_ENGINE (default: deepagent; pipeline is the rollback engine)",
-    )
-    parser.add_argument(
         "--no-redis",
         action="store_true",
-        help="Run without Redis: skips the knowledge base and PDF/text caching",
+        help="Run without Redis: skips the knowledge base and the PDF caches",
     )
     parser.add_argument(
         "--workdir", default=None, help="Where to write result.json (default: ./out)"
@@ -55,13 +49,9 @@ async def _run(argv: Optional[List[str]]) -> int:
 
     config = AgentConfig.from_env()
     updates = {"workdir": Path(args.workdir) if args.workdir else Path("./out")}
-    if args.engine:
-        updates["engine"] = args.engine
     if args.no_redis:
         updates["redis_url"] = None
     config = config.model_copy(update=updates)
-
-    print(f"engine={config.engine!r}", file=sys.stderr)
 
     runner = ResearchRunner(config)
     final: Optional[FinalResult] = None
@@ -90,5 +80,5 @@ def main(argv: Optional[List[str]] = None) -> int:
     return asyncio.run(_run(argv if argv is not None else sys.argv[1:]))
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover - script entry point
     sys.exit(main())

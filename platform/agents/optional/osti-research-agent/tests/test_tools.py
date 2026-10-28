@@ -18,7 +18,8 @@ raising, because an exception would terminate the orchestrator loop.
 import asyncio
 import json
 
-from research_agent import memory as kb
+import pytest
+
 from research_agent import osti_client
 from research_agent.core.config import AgentConfig
 from research_agent.core.events import Finding
@@ -385,27 +386,47 @@ def test_failed_parse_is_not_retried(monkeypatch):
 # --- knowledge base -------------------------------------------------------
 
 
-def test_search_knowledge_base_maps_atomic_facts(monkeypatch):
-    async def fake_search(question, complete, redis_client):
-        return [
-            {
-                "content": "Ti creeps above 800C",
-                "source_paper": {"osti_id": "123", "title": "T", "url": "u"},
-            }
-        ]
+class _FakeKnowledge:
+    def __init__(self, facts=(), cached=None):
+        self.facts, self.cached, self.stored = list(facts), cached, []
 
-    monkeypatch.setattr(kb, "search_relevant_atomic_facts", fake_search)
+    async def search_facts(self, query, k=8):
+        return self.facts
+
+    async def get_cached_answer(self, question):
+        return self.cached
+
+    async def store_fact(self, **kwargs):
+        self.stored.append(kwargs)
+        return f"fact-{len(self.stored)}"
+
+
+def test_search_knowledge_base_returns_facts_and_cached_answer():
     ctx = _ctx()
+    ctx.knowledge = _FakeKnowledge(
+        facts=[{"content": "Ti creeps above 800C", "source_id": "123", "title": "T", "url": "u"}],
+        cached={"answer": "prior", "sources": [{"source": "OSTI #123"}]},
+    )
     search = _tool(build_memory_tools(ctx), "search_knowledge_base")
 
     out = json.loads(asyncio.run(search.ainvoke({"query": "titanium"})))
-    assert out[0]["content"] == "Ti creeps above 800C"
-    assert out[0]["source_osti_id"] == "123"
+
+    assert out["facts"][0] == {"content": "Ti creeps above 800C", "source_id": "123",
+                               "title": "T", "url": "u"}
+    assert out["cached_answer"] == {"answer": "prior", "sources": [{"source": "OSTI #123"}]}
 
 
-def test_store_facts_counts_and_tracks(monkeypatch):
-    monkeypatch.setattr(kb, "store_atomic_fact", lambda **kw: "fact-1")
+def test_search_knowledge_base_without_a_store_is_empty():
+    search = _tool(build_memory_tools(_ctx()), "search_knowledge_base")
+
+    out = json.loads(asyncio.run(search.ainvoke({"query": "titanium"})))
+
+    assert out == {"cached_answer": None, "facts": []}
+
+
+def test_store_facts_counts_and_tracks():
     ctx = _ctx()
+    ctx.knowledge = _FakeKnowledge()
     ctx.search_hits["123"] = {"title": "T", "url": "u"}
     ctx.findings.append(Finding(source_id="123", answer="verified"))
     store = _tool(build_memory_tools(ctx), "store_facts")
@@ -413,25 +434,41 @@ def test_store_facts_counts_and_tracks(monkeypatch):
     facts = json.dumps(
         [
             {"content": "fact one", "topics": ["creep"], "source_osti_id": "123"},
-            {"content": "fact two", "topics": [], "source_osti_id": "123"},
+            {"content": "fact two", "topics": [], "source_id": "123"},
         ]
     )
     out = json.loads(asyncio.run(store.ainvoke({"facts_json": facts})))
-    assert out["stored"] == 2
-    assert out["rejected"] == 0
+
+    assert out == {"stored": 2, "rejected": 0}
     assert ctx.facts_stored == 2
+    assert ctx.knowledge.stored[0]["source_title"] == "T"
 
 
-def test_store_facts_rejects_unverified_sources(monkeypatch):
-    called = False
-
-    def fake_store(**kwargs):
-        nonlocal called
-        called = True
-        return "fact-1"
-
-    monkeypatch.setattr(kb, "store_atomic_fact", fake_store)
+def test_store_facts_without_a_store_stores_nothing():
     ctx = _ctx()
+    ctx.findings.append(Finding(source_id="123", answer="verified"))
+    store = _tool(build_memory_tools(ctx), "store_facts")
+
+    facts = json.dumps([{"content": "fact", "source_id": "123"}])
+    out = json.loads(asyncio.run(store.ainvoke({"facts_json": facts})))
+
+    assert out == {"stored": 0, "rejected": 0}
+
+
+@pytest.mark.parametrize("facts_json, error", [
+    ("not json", "not valid JSON"), ('{"a": 1}', "expected a JSON array"),
+])
+def test_store_facts_rejects_malformed_input(facts_json, error):
+    store = _tool(build_memory_tools(_ctx()), "store_facts")
+
+    out = json.loads(asyncio.run(store.ainvoke({"facts_json": facts_json})))
+
+    assert out["stored"] == 0 and error in out["error"]
+
+
+def test_store_facts_rejects_unverified_sources():
+    ctx = _ctx()
+    ctx.knowledge = _FakeKnowledge()
     store = _tool(build_memory_tools(ctx), "store_facts")
 
     facts = json.dumps(
@@ -440,7 +477,7 @@ def test_store_facts_rejects_unverified_sources(monkeypatch):
     out = json.loads(asyncio.run(store.ainvoke({"facts_json": facts})))
 
     assert out == {"stored": 0, "rejected": 1}
-    assert called is False
+    assert ctx.knowledge.stored == []
 
 
 def test_store_facts_handles_bad_json_without_raising():

@@ -10,24 +10,19 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""Parity evaluation runner: run every question through both engines and
-score the results.
+"""Evaluation runner: run each question through the agent and score the
+results.
 
-    # needs LiteLLM creds in the env (REGISTRY_URL/LITELLM_MASTER_KEY); Redis
-    # optional but required for the cache-repeat questions to hit memory.
-    uv run python -m evals.run --engines pipeline deepagent \
-        --redis-db-base 14 --report evals/report.json
+    # needs the agent's LLM profile in the env (LLM_CONFIG_PROFILE and its
+    # key); Redis optional but required for the cache-repeat questions.
+    uv run python -m evals run --report evals/report.json
 
 For LangSmith traces set LANGCHAIN_TRACING_V2=true + LANGCHAIN_API_KEY before
 running (the deep engine's astream is already instrumented by langgraph).
 
-This module is deliberately thin: it wires ResearchRunner to the offline
-metrics in ``evals.scoring`` and prints a report. The LLM-judged rubric
-(groundedness/completeness, 1-5) and the manual 5-transcript spot-check from the
-plan are done separately against the transcripts this writes under --workdir.
-
-Not unit-tested (it needs live services); the mechanical scoring it calls is
-covered by tests/test_eval_scoring.py.
+This module wires ResearchRunner to the offline metrics in ``evals.scoring``
+and the LLM judge in ``evals.judge``, and writes the reports. Read 5
+transcripts by hand as well: a model judge can be wrong.
 """
 
 from __future__ import annotations
@@ -111,6 +106,9 @@ def _redis_url_with_db(redis_url: str, db: int) -> str:
     return urlunsplit(parsed._replace(path=f"/{db}"))
 
 
+ENGINES = ("deepagent",)
+
+
 def _require_empty_redis(config: AgentConfig, engine: str) -> None:
     client = redis.Redis.from_url(
         config.redis_url,
@@ -158,7 +156,7 @@ async def _run_engine(
     progress: Optional[Progress] = None,
     judge_complete: Optional[judge.CompleteFn] = None,
 ) -> List[Dict[str, Any]]:
-    updates: Dict[str, Any] = {"engine": engine, "workdir": workdir / engine}
+    updates: Dict[str, Any] = {"workdir": workdir / engine}
     if redis_db is not None:
         updates["redis_url"] = _redis_url_with_db(base.redis_url, redis_db)
     config = base.model_copy(update=updates)
@@ -206,7 +204,11 @@ async def _run_engine(
 async def _main(argv: List[str]) -> int:
     parser = argparse.ArgumentParser(prog="python -m evals.run")
     parser.add_argument("--questions", default="evals/questions.yaml")
-    parser.add_argument("--engines", nargs="+", default=["pipeline", "deepagent"])
+    # One engine today; kept as a list so reports keep their per-engine shape
+    # if another engine is added.
+    parser.add_argument(
+        "--engines", nargs="+", choices=list(ENGINES), default=list(ENGINES)
+    )
     parser.add_argument("--workdir", default="evals/out")
     parser.add_argument("--report", default="evals/report.json")
     parser.add_argument(
@@ -367,5 +369,5 @@ def main(argv: Optional[List[str]] = None) -> int:
         return INTERRUPTED_EXIT
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover - script entry point
     sys.exit(main())

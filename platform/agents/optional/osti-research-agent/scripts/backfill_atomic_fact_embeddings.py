@@ -58,5 +58,5 @@ def main() -> int:
     return asyncio.run(_run())
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover - script entry point
     raise SystemExit(main())
