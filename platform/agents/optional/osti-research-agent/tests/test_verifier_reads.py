@@ -133,3 +133,51 @@ def test_a_verifier_that_only_listed_files_is_still_refused(tmp_path):
 
     assert result["answered"] is False
     assert context.verification_errors == ["123: verifier_protocol_failure"]
+
+
+def _verify_with(tmp_path, artifacts, messages):
+    context = _verification_context(tmp_path)
+    (tmp_path / "papers" / "123" / "tables").mkdir(exist_ok=True)
+    (tmp_path / "papers" / "123" / "tables" / "table_01.md").write_text("| 800 |")
+    verification = {
+        "structured_response": _verification(artifacts=artifacts),
+        "messages": messages,
+    }
+    result = asyncio.run(
+        deep_agent._analyze_paper(
+            "123", "Does titanium creep?",
+            analyzer=_FakeRunnable(result=_analysis_result()),
+            verifier=_FakeRunnable(result=verification),
+            ctx=context,
+        )
+    )
+    return result, context
+
+
+def _read(path, call_id="r"):
+    return AIMessage(content="", tool_calls=[_call("read_file", call_id, file_path=path)])
+
+
+def test_an_unread_meta_json_citation_is_dropped_not_fatal(tmp_path):
+    result, context = _verify_with(
+        tmp_path, [PAPER, "/papers/123/meta.json"], [_read(PAPER)]
+    )
+
+    assert result["source_id"] == "123" and context.verification_errors == []
+    assert context.findings[0].artifacts == [PAPER]
+
+
+def test_a_read_meta_json_citation_is_kept(tmp_path):
+    result, context = _verify_with(
+        tmp_path, [PAPER, "/papers/123/meta.json"],
+        [_read(PAPER), _read("/papers/123/meta.json", "m")],
+    )
+
+    assert context.findings[0].artifacts == [PAPER, "/papers/123/meta.json"]
+
+
+def test_an_unread_evidence_file_still_fails_the_finding(tmp_path):
+    result, context = _verify_with(tmp_path, [PAPER, TABLE], [_read(PAPER)])
+
+    assert result["answered"] is False
+    assert context.verification_errors == ["123: verifier_protocol_failure"]

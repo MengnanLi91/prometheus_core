@@ -335,6 +335,12 @@ def _validated_artifacts(
         if not relative.parts:
             raise VerifierProtocolError(f"artifact {artifact!r} does not name a file")
         if str(visible_path) not in read_paths:
+            # meta.json is the paper's index (parse method, table and figure
+            # captions), not evidence; verifiers copy the analyzer's citation
+            # of it without reopening it. Drop it rather than lose the
+            # finding. Every evidence file must still have been read.
+            if relative.parts == ("meta.json",):
+                continue
             raise VerifierProtocolError(f"verifier did not read artifact {artifact!r}")
         real_path = (source_root / Path(*relative.parts)).resolve()
         if not real_path.is_relative_to(source_root) or not real_path.is_file():

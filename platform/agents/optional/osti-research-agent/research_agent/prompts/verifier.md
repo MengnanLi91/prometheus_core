@@ -38,7 +38,8 @@ unavailable, return exactly one JSON object with the same fields:
 - `answer`, `evidence`, `excerpt`, and `artifacts`: the final supported Finding
   fields. Use an empty excerpt when no exact quote is needed.
 - `artifacts` must include `paper.md` and may include only files you actually
-  read under the supplied paper directory.
+  read under the supplied paper directory. List the files you read yourself;
+  do not copy the candidate's `artifacts`.
 - `match`: `exact` or `nearest`, as defined for the candidate.
 - `reason`: a concise verification explanation.
 
