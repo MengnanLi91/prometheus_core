@@ -178,3 +178,169 @@ def test_the_orchestrator_is_told_how_to_use_it():
 
     assert "record_abstract_evidence(source_id, statement, quote)" in prompt
     assert "never put it in `findings`" in prompt
+
+
+# --- best-effort estimates ---------------------------------------------------
+
+
+def _estimate_ctx():
+    ctx = _ctx()
+    ctx.findings.append(
+        Finding(
+            source_id="706175",
+            match="nearest",
+            answer="At 550 °C and 120 MPa the minimum creep rate was 3.2e-9 /s.",
+            evidence="Table 4: stress exponent n = 5.2, activation energy Q = 280 kJ/mol.",
+        )
+    )
+    return ctx
+
+
+def _estimate_args(**overrides):
+    values = {
+        "quantity": "minimum creep rate of 316 SS at 400 °C and 15 MPa",
+        "unit": "/s",
+        "method": "Norton power law with Arrhenius temperature dependence, scaled "
+        "from the 550 °C datum",
+        "assumptions": ["the stress exponent holds down to 15 MPa"],
+        "inputs": [
+            {"name": "rate0", "value": "3.2e-9", "unit": "/s", "source_id": "706175"},
+            {"name": "s0", "value": "120", "unit": "MPa", "source_id": "706175"},
+            {"name": "n", "value": "5.2", "source_id": "706175"},
+            {"name": "Q", "value": "280", "unit": "kJ/mol", "source_id": "706175"},
+        ],
+        "formula": "rate0 * (15 / s0) ** n * exp(-Q * 1000 / R * (1 / 673.15 - 1 / 823.15))",
+        "low_formula": "rate0 * (15 / s0) ** (n + 1) * exp(-Q * 1000 / R * (1 / 673.15 - 1 / 823.15))",
+        "high_formula": "rate0 * (15 / s0) ** (n - 1) * exp(-Q * 1000 / R * (1 / 673.15 - 1 / 823.15))",
+    }
+    values.update(overrides)
+    return values
+
+
+def _estimate(ctx, **overrides):
+    tool = next(t for t in build_tools(ctx) if t.name == "record_estimate")
+    return json.loads(asyncio.run(tool.ainvoke(_estimate_args(**overrides))))
+
+
+def test_a_cited_estimate_is_computed_by_the_code():
+    ctx = _estimate_ctx()
+
+    out = _estimate(ctx)
+
+    assert out["ok"] is True
+    assert out["low"] <= out["value"] <= out["high"]
+    import math
+
+    expected = 3.2e-9 * (15 / 120) ** 5.2 * math.exp(
+        -280e3 / 8.314462618 * (1 / 673.15 - 1 / 823.15)
+    )
+    assert out["value"] == pytest.approx(expected)
+    assert ctx.estimates and ctx.findings[0].source_id == "706175"  # findings unchanged
+
+
+@pytest.mark.parametrize(
+    "overrides, error",
+    [
+        ({"inputs": [{"name": "rate0", "value": "9.9e-9", "source_id": "706175"}],
+          "formula": "rate0", "low_formula": "rate0", "high_formula": "rate0"},
+         "does not appear in the cited evidence"),
+        ({"inputs": [{"name": "rate0", "value": "3.2e-9", "source_id": "999"}],
+          "formula": "rate0", "low_formula": "rate0", "high_formula": "rate0"},
+         "no verified finding or abstract evidence"),
+        ({"assumptions": []}, "state at least one assumption"),
+        ({"method": ""}, "quantity and method are required"),
+        ({"inputs": []}, "needs cited inputs"),
+        ({"low_formula": "rate0 * 10"}, "range must contain the estimate"),
+        ({"formula": "__import__('os').system('ls')"}, "not allowed in a formula"),
+        ({"formula": "rate0.real"}, "not allowed in a formula"),
+        ({"formula": "rate0 * T"}, "unknown name 'T'"),
+        ({"formula": "rate0 / 0"}, "cannot be evaluated"),
+        ({"formula": "rate0 * (15 / s0) ** n", "low_formula": "rate0 * 0.1 * (15 / s0) ** n",
+          "high_formula": "rate0 * 10 * (15 / s0) ** n"}, "inputs not used by any formula: Q"),
+    ],
+)
+def test_bad_estimates_are_refused(overrides, error):
+    ctx = _estimate_ctx()
+
+    out = _estimate(ctx, **overrides)
+
+    assert out["ok"] is False and error in out["error"]
+    assert ctx.estimates == []
+
+
+def test_estimate_inputs_may_come_from_abstract_evidence():
+    ctx = _ctx()
+    _record(ctx, statement="Minimum creep rate of 3.2e-9 /s", quote=QUOTE)
+
+    out = _estimate(
+        ctx,
+        inputs=[{"name": "rate0", "value": "3.2e-9", "unit": "/s", "source_id": "3729583"}],
+        formula="rate0 * 0.01", low_formula="rate0 * 0.001", high_formula="rate0 * 0.1",
+    )
+
+    assert out["ok"] is True
+
+
+def test_estimate_section_is_labelled_and_lists_every_input(monkeypatch):
+    ctx = _estimate_ctx()
+    _estimate(ctx)
+
+    final = _final(ctx, monkeypatch)
+
+    section = final.answer.split("## Best-effort estimate (not reported by any source)")[1]
+    assert "not a measured or reported value" in section
+    assert "Norton power law" in section and "the stress exponent holds down to 15 MPa" in section
+    for name in ("rate0", "s0", "n", "Q"):
+        assert f"`{name}` =" in section
+    assert "plausible range" in section
+
+
+def test_an_estimate_alone_does_not_make_a_run_completed(monkeypatch):
+    ctx = _ctx()
+    _record(ctx, statement="Minimum creep rate of 3.2e-9 /s", quote=QUOTE)
+    _estimate(
+        ctx,
+        inputs=[{"name": "rate0", "value": "3.2e-9", "source_id": "3729583"}],
+        formula="rate0 * 0.01", low_formula="rate0 * 0.001", high_formula="rate0 * 0.1",
+    )
+
+    final = _final(ctx, monkeypatch)
+
+    assert final.status == "no_results" and "Best-effort estimate" in final.answer
+
+
+def test_estimates_are_not_cached_as_an_answer(monkeypatch):
+    cached = []
+
+    class Knowledge:
+        async def cache_answer(self, question, answer, sources):
+            cached.append(answer)
+
+    ctx = _estimate_ctx()
+    ctx.knowledge = Knowledge()
+    _estimate(ctx)
+
+    _final(ctx, monkeypatch)
+
+    assert cached and "Best-effort estimate" not in cached[0]
+
+
+def test_the_judge_is_told_how_to_score_labelled_estimates():
+    from pathlib import Path
+
+    judge_prompt = Path(__file__).resolve().parents[1].joinpath("evals", "judge_prompt.md")
+    text = " ".join(judge_prompt.read_text().split())
+
+    assert "An estimate presented as a reported or measured value is unsupported" in text
+    assert "score it 4 when the estimate is sound" in text
+
+
+def test_orchestrator_allows_estimates_only_through_the_tool():
+    from research_agent.core import prompts
+
+    prompt = " ".join(
+        prompts.render_orchestrator_prompt(AgentConfig(litellm_base_url="http://u")).split()
+    )
+
+    assert "anywhere except through `record_estimate` below" in prompt
+    assert "If the inputs are not available, do not estimate" in prompt

@@ -58,6 +58,7 @@ _TOOL_STATUS = {
     "store_facts": "Storing facts in knowledge base...",
     "write_todos": "Updating plan...",
     "record_abstract_evidence": "Checking a statement against an abstract...",
+    "record_estimate": "Checking and computing a best-effort estimate...",
 }
 
 
@@ -211,8 +212,8 @@ def _render_grounded_answer(answers: List[Dict]) -> str:
         )
 
     limitation = (
-        "This answer is limited to the analyzed findings above; no estimate "
-        "or extrapolation was added."
+        "The findings above are limited to what the analyzed papers report; "
+        "no estimate or extrapolation was added to them."
     )
     if any(a.get("match") == "nearest" for a in answers):
         limitation += (
@@ -231,8 +232,15 @@ def _link(title: str, url: str, source_id: str) -> str:
 def _render_weaker_evidence(ctx: RunContext) -> str:
     """Abstract evidence, rendered after the verified findings and clearly
     labelled; every line was checked in code (tools/evidence.py)."""
-    if not ctx.abstract_evidence:
-        return ""
+    sections = []
+    if ctx.abstract_evidence:
+        sections.append(_render_abstract_evidence(ctx))
+    for estimate in ctx.estimates:
+        sections.append(_render_estimate(estimate, ctx))
+    return "\n\n".join(sections)
+
+
+def _render_abstract_evidence(ctx: RunContext) -> str:
     lines = [
         "## From abstracts (full text not available)",
         "These statements come only from the abstracts of papers whose full "
@@ -246,6 +254,49 @@ def _render_weaker_evidence(ctx: RunContext) -> str:
             f"\"{item['quote']}\""
         )
     return "\n\n".join(lines[:2]) + "\n\n" + "\n".join(lines[2:])
+
+
+def _number(value: float) -> str:
+    return f"{value:.3g}"
+
+
+def _source_label(ctx: RunContext, source_id: str) -> str:
+    hit = ctx.search_hits.get(source_id, {})
+    url = hit.get("url") or (
+        f"https://www.osti.gov/biblio/{source_id}" if source_id.isdigit() else ""
+    )
+    return _link(hit.get("title"), url, source_id)
+
+
+def _render_estimate(estimate: Dict, ctx: RunContext) -> str:
+    """An estimate, labelled as one, with its method, every cited input, the
+    formulas and the assumptions, so a reader can check or redo it."""
+    unit = f" {estimate['unit']}" if estimate["unit"] else ""
+    lines = [
+        "## Best-effort estimate (not reported by any source)",
+        f"**{estimate['quantity']}: about {_number(estimate['value'])}{unit} "
+        f"(plausible range {_number(estimate['low'])} to "
+        f"{_number(estimate['high'])}{unit}).** This is a calculation from the "
+        "cited values below, not a measured or reported value, and it may "
+        "extrapolate beyond the conditions those values were measured at.",
+        f"Method: {estimate['method']}",
+        "Inputs:",
+    ]
+    for item in estimate["inputs"]:
+        what = f" ({item['quantity']})" if item["quantity"] else ""
+        unit_text = f" {item['unit']}" if item["unit"] else ""
+        lines.append(
+            f"- `{item['name']}` = {item['value']}{unit_text}{what} - from "
+            f"{_source_label(ctx, item['source_id'])}"
+        )
+    formulas = estimate["formulas"]
+    lines.append(
+        f"Formula: `{formulas['formula']}`; range from `{formulas['low_formula']}` "
+        f"to `{formulas['high_formula']}`."
+    )
+    lines.append("Assumptions:")
+    lines.extend(f"- {a}" for a in estimate["assumptions"])
+    return "\n\n".join(lines[:3]) + "\n\n" + "\n".join(lines[3:])
 
 
 def _weaker_provenance(ctx: RunContext) -> List[Dict]:

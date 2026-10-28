@@ -100,6 +100,9 @@ class RunContext:
     # Code-checked statements from the abstracts of papers whose full text
     # could not be read (tools/evidence.py). Never findings.
     abstract_evidence: List[dict] = field(default_factory=list)
+    # Code-checked estimates computed from cited values (tools/evidence.py).
+    # Never findings.
+    estimates: List[dict] = field(default_factory=list)
     # Papers whose parse was attempted, counted before parsing so a PDF that
     # keeps failing to parse still uses up its slot. This is the paper budget;
     # FinalResult.papers_analyzed reports analyses instead.
