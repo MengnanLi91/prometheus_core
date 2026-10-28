@@ -330,3 +330,67 @@ def test_analyzer_task_message_asks_for_nearest_data():
 
     assert 'match: "nearest"' in message and "ANY conditions" in message
     assert "only when the paper has no values of the asked quantity" in message
+
+
+# --- estimate nudge --------------------------------------------------------
+
+
+def _nearest_ctx(match="nearest"):
+    from research_agent.tools import RunContext
+
+    ctx = RunContext(config=AgentConfig(litellm_base_url="http://unused"), complete=None)
+    ctx.findings.append(
+        Finding(source_id="1992084", answer="n = 8.5 at 550 C", evidence="Table 1", match=match)
+    )
+    return ctx
+
+
+def test_estimate_nudge_when_every_finding_is_nearest():
+    nudge = deep_runner.estimate_nudge(_nearest_ctx())
+
+    assert "call record_estimate once now" in nudge and "1992084" in nudge
+    assert "If they don't, do not estimate" in nudge
+
+
+def test_no_estimate_nudge_with_an_exact_finding_an_estimate_or_no_time():
+    exact = _nearest_ctx(match="exact")
+    estimated = _nearest_ctx()
+    estimated.estimates.append({"quantity": "q"})
+    late = _nearest_ctx()
+    late.deadline = 0.0
+
+    for ctx in (exact, estimated, late, _nudge_ctx()):
+        assert deep_runner.estimate_nudge(ctx) is None
+
+
+class _NearestGraph(_RoundGraph):
+    def __init__(self, ctx):
+        super().__init__(ctx)
+        ctx.findings.append(
+            Finding(source_id="1992084", answer="a", evidence="T1", match="nearest")
+        )
+
+
+def test_a_nearest_only_run_is_asked_for_an_estimate_once(monkeypatch):
+    async def no_followups(**kwargs):
+        return []
+
+    monkeypatch.setattr(llm_steps, "suggest_followup_from_findings", no_followups)
+    graphs = []
+    monkeypatch.setattr(
+        deep_runner, "build_research_agent",
+        lambda config, ctx: graphs.append(_NearestGraph(ctx)) or graphs[0],
+    )
+
+    async def go():
+        return [
+            e async for e in deep_runner.run_deep(
+                "q", AgentConfig(litellm_base_url="http://unused"), "r", complete=None
+            )
+        ]
+
+    events = asyncio.run(go())
+
+    assert len(graphs[0].inputs) == 2  # one estimate round, not two
+    assert "record_estimate" in graphs[0].inputs[1][-1].content
+    assert any("asking for a cited estimate" in getattr(e, "message", "") for e in events)

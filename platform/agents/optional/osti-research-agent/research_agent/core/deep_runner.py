@@ -451,6 +451,36 @@ def keep_going_nudge(ctx: RunContext) -> Optional[str]:
     return "\n".join(lines)
 
 
+# An estimate round needs time for one model turn plus the tool call.
+_ESTIMATE_MIN_SECONDS = 60.0
+
+
+def estimate_nudge(ctx: RunContext) -> Optional[str]:
+    """A follow-up instruction when every finding is only nearest data, no
+    estimate was made, and there is time left; else None.
+
+    Models given nearest data (a creep rate at another temperature, a Norton
+    exponent) stopped without trying record_estimate even when the inputs
+    were in their own findings."""
+    if not ctx.findings or ctx.estimates:
+        return None
+    if any(f.match == "exact" for f in ctx.findings):
+        return None
+    if ctx.seconds_left() < _ESTIMATE_MIN_SECONDS:
+        return None
+    sources = ", ".join(sorted({f.source_id for f in ctx.findings}))
+    return (
+        "Every verified finding is nearest data, not at the asked conditions "
+        f"(sources: {sources}). If those findings give the inputs a standard "
+        "relation needs - for example a rate at another temperature or stress "
+        "plus a stress exponent and an activation energy, or coefficients of a "
+        "fitted law - call record_estimate once now with the cited inputs, a "
+        "low/high range, the method and every assumption, including how far "
+        "it extrapolates. If they don't, do not estimate. Then emit the final "
+        "JSON again."
+    )
+
+
 def _update_messages(chunk: Dict) -> List[Any]:
     out: List[Any] = []
     if isinstance(chunk, dict):
@@ -519,6 +549,7 @@ async def run_deep(
         # The graph has no checkpointer, so a follow-up round restarts from the
         # whole conversation so far plus the nudge.
         messages: List[Any] = [HumanMessage(content=question)]
+        estimate_nudged = False
         for round_no in range(MAX_NUDGES + 1):
             round_messages: List[Any] = []
             async for mode, chunk in agent.astream(
@@ -541,14 +572,21 @@ async def run_deep(
                         final_text = text
                     for event in translate_update(chunk, ctx):
                         yield event
-            nudge = keep_going_nudge(ctx)
-            if nudge is None or round_no == MAX_NUDGES:
+            if round_no == MAX_NUDGES:
                 break
-            yield ProgressEvent(
-                message="No verified findings yet; reading unread results "
-                f"({ctx.config.max_papers_analyzed - ctx.papers_attempted} paper "
-                "slot(s) left)"
-            )
+            nudge = keep_going_nudge(ctx)
+            if nudge is not None:
+                status = (
+                    "No verified findings yet; reading unread results "
+                    f"({ctx.config.max_papers_analyzed - ctx.papers_attempted} "
+                    "paper slot(s) left)"
+                )
+            elif not estimate_nudged and (nudge := estimate_nudge(ctx)):
+                estimate_nudged = True
+                status = "Findings are only nearest data; asking for a cited estimate"
+            else:
+                break
+            yield ProgressEvent(message=status)
             messages = [*messages, *round_messages, HumanMessage(content=nudge)]
 
         if ctx.findings:
