@@ -5,6 +5,8 @@ on:
     branches: [devel]
   pull_request:
     branches: [main, devel]
+  merge_group:
+    types: [checks_requested]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.ref }}
@@ -26,9 +28,10 @@ jobs:
         # refuses to read it and gitleaks passes without scanning anything
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Scan
-        # Only the commits being added: the PR's commits, or the pushed ones
+        # Only the commits being added: the PR's commits, the merge group's, or
+        # the pushed ones. Each event sets only its own base, the others are empty
         env:
-          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
           HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
         run: |
           # gitleaks passes without scanning if the range is empty or the base
