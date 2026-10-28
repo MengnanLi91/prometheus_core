@@ -1,0 +1,5 @@
+rules:
+  self-repository:
+    # The $/ syntax isn't supported by actionlint 1.7.12, which rejects it as an
+    # invalid uses: reference. Enable this once actionlint accepts it
+    disable: true

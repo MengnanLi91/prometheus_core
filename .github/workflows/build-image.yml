@@ -60,6 +60,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           ref: ${{ inputs.sha }}
       - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
@@ -128,9 +129,10 @@ jobs:
           SOURCE: ${{ github.server_url }}/${{ github.repository }}
           SHA: ${{ inputs.sha }}
         run: |
-          count=$(ls | wc -l)
-          if [ "$count" -ne 2 ]; then
-            echo "::error::Expected 2 digests (amd64, arm64), found $count"
+          # The files are named by digest, without the sha256: prefix
+          digests=(*)
+          if [ "${#digests[@]}" -ne 2 ]; then
+            echo "::error::Expected 2 digests (amd64, arm64), found ${#digests[@]}"
             exit 1
           fi
           # The index annotation is what links the ghcr.io package to this repo
@@ -138,7 +140,7 @@ jobs:
             --tag "$IMAGE:$TAG" \
             --annotation "index:org.opencontainers.image.source=$SOURCE" \
             --annotation "index:org.opencontainers.image.revision=$SHA" \
-            $(printf "$IMAGE@sha256:%s " *)
+            "${digests[@]/#/$IMAGE@sha256:}"
       - name: Inspect
         env:
           REF: ${{ inputs.image }}:${{ inputs.tag }}

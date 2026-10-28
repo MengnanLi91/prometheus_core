@@ -23,7 +23,9 @@ runs:
         K3D_VERSION: v5.9.0
         K3D_SHA256: 06d8f25bc3a971c4eb29e0ff08429b180402db0f4dec838c9eac427e296800a0
         CLUSTER_TOOLS: ${{ inputs.cluster-tools }}
-      run: |
+      # GITHUB_PATH only gets the fixed directory created here, which holds
+      # just the checksum-verified binaries; no input reaches it
+      run: | # zizmor: ignore[github-env]
         bin="$RUNNER_TEMP/kube-tools"
         mkdir -p "$bin"
         cd "$RUNNER_TEMP"
