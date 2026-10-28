@@ -73,7 +73,7 @@ def test_litellm_image_pinned(compose_data):
 
 def test_client_agent_receives_selectable_llm_configuration(compose_data):
     common_env = compose_data["x-common-env"]
-    assert common_env["REGISTRY_URL"] == "${REGISTRY_URL:-http://litellm:4000}"
+    assert common_env["REGISTRY_URL"] == "${REGISTRY_URL:-http://backend:8000}"
     assert "LLM_DEFAULT_MODEL" not in common_env
     assert "LLM_API_KEY" not in common_env
     assert "MODEL_NAME" not in common_env
