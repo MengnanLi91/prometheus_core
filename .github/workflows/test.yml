@@ -795,9 +795,11 @@ jobs:
           TEST_DEPENDENCIES: ${{ matrix.test_dependencies }}
         run: |
           printf '%s\n' "$OVERRIDES" > "$RUNNER_TEMP/overrides.txt"
+          # Space-separated extra test packages; empty for most agents.
+          read -ra test_dependencies <<< "$TEST_DEPENDENCIES"
           uv venv
           uv pip install -r pyproject.toml --overrides "$RUNNER_TEMP/overrides.txt" \
-            pytest pytest-asyncio pytest-cov $TEST_DEPENDENCIES "$GITHUB_WORKSPACE/sdk"
+            pytest pytest-asyncio pytest-cov "${test_dependencies[@]}" "$GITHUB_WORKSPACE/sdk"
       - name: Test
         # Agents with a flag fail below fail_under in their pyproject.toml
         run: .venv/bin/python -m pytest --color=yes ${{ matrix.flag && '--cov --cov-report=xml' || '' }}
