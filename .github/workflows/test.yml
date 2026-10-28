@@ -5,6 +5,8 @@ on:
     branches: [devel]
   pull_request:
     branches: [main, devel]
+  merge_group:
+    types: [checks_requested]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.ref }}
@@ -26,9 +28,10 @@ jobs:
         # refuses to read it and gitleaks passes without scanning anything
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Scan
-        # Only the commits being added: the PR's commits, or the pushed ones
+        # Only the commits being added: the PR's commits, the merge group's, or
+        # the pushed ones. Each event sets only its own base, the others are empty
         env:
-          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
           HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
         run: |
           # gitleaks passes without scanning if the range is empty or the base
@@ -533,9 +536,97 @@ jobs:
         # current directory on sys.path, which the tests need to import system/
         run: uv run --frozen --no-sync python -m pytest --color=yes -m "not integration"
 
+  platform-compose:
+    name: "platform: compose debug=${{ matrix.debug }} optional=${{ matrix.optional }} system-test=${{ matrix.system-test }}"
+    needs: gitleaks
+    runs-on: ubuntu-26.04
+    strategy:
+      fail-fast: false
+      matrix:
+        debug: ["false", "true"]
+        optional: ["false", "true"]
+        system-test: ["false", "true"]
+    defaults:
+      run:
+        working-directory: platform
+    env:
+      DEBUG_AGENTS: ${{ matrix.debug }}
+      OPTIONAL_AGENTS: ${{ matrix.optional }}
+      SYSTEM_TEST: ${{ matrix.system-test }}
+      # Placeholders for the variables .env sets, which init_env.py generates
+      # in make up. config only interpolates them
+      ADMIN_DB_PASSWORD: placeholder
+      AGENT_SECRET: placeholder
+      LITELLM_DB_PASSWORD: placeholder
+      LITELLM_LOCAL_PORT: "9977"
+      LITELLM_MASTER_KEY: placeholder
+      LLM_API_KEY: placeholder
+      PROMETHEUS_API_BASE_IMAGE_HASH: placeholder
+      REDIS_PASSWORD: placeholder
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Generate
+        run: make generate
+      - name: Validate
+        # The same files the Makefile passes, with both profiles so every
+        # service is checked. Fails on warnings too, such as an unset variable
+        run: |
+          files=(-f docker-compose.yml -f docker-compose.agents.yml)
+          if [ "$SYSTEM_TEST" = true ]; then
+            files+=(-f docker-compose.system-test.yml)
+          fi
+          docker compose "${files[@]}" --profile dev --profile prod config -q 2> "$RUNNER_TEMP/config.log" \
+            || { cat "$RUNNER_TEMP/config.log"; exit 1; }
+          if [ -s "$RUNNER_TEMP/config.log" ]; then
+            cat "$RUNNER_TEMP/config.log"
+            echo "::error::docker compose config printed warnings"
+            exit 1
+          fi
+
+  agent-template-compose:
+    name: "agent-template: compose ${{ matrix.network }}"
+    needs: gitleaks
+    runs-on: ubuntu-26.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - network: internal
+          - network: external
+            host: localhost
+            port: "8042"
+    defaults:
+      run:
+        working-directory: agent-template/agent_template
+    env:
+      NETWORK: ${{ matrix.network }}
+      # Placeholders for the variables .env sets. config only interpolates them
+      AGENT_SECRET: placeholder
+      LITELLM_MASTER_KEY: placeholder
+      REDIS_PASSWORD: placeholder
+      # Set together for external mode, as the Makefile requires
+      EXTERNAL_AGENT_HOST: ${{ matrix.host }}
+      EXTERNAL_AGENT_PORT: ${{ matrix.port }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Validate
+        # The same files the Makefile passes. Fails on warnings too, such as
+        # an unset variable
+        run: |
+          docker compose -f docker-compose.yml -f "docker-compose.net_$NETWORK.yml" config -q 2> "$RUNNER_TEMP/config.log" \
+            || { cat "$RUNNER_TEMP/config.log"; exit 1; }
+          if [ -s "$RUNNER_TEMP/config.log" ]; then
+            cat "$RUNNER_TEMP/config.log"
+            echo "::error::docker compose config printed warnings"
+            exit 1
+          fi
+
   platform-up:
     name: "platform: up"
-    needs: gitleaks
+    # Skip the slow start when a compose file doesn't even parse
+    needs: [gitleaks, platform-compose]
     runs-on: ubuntu-26.04
     timeout-minutes: 45
     defaults:
@@ -548,10 +639,13 @@ jobs:
       OPTIONAL_AGENTS: "false"
       PROFILE: prod
       # make up runs init_env.py, which creates .env from .env.example,
-      # generates every secret, and takes the profile and its key from the
-      # environment. Nothing calls an LLM at startup, so a placeholder is enough
-      LLM_CONFIG_PROFILE: anthropic
+      # generates every secret, and takes this key from the environment.
+      # Nothing calls an LLM or DeepLynx at startup, so placeholders are enough.
       LLM_API_KEY: sk-ant-test-not-real
+      DEEPLYNX_KEY: ci-test-key
+      DEEPLYNX_SECRET: ci-test-secret
+      DEEPLYNX_ORG_ID: "1"
+      DEEPLYNX_PROJECT_ID: "1"
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

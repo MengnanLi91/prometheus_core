@@ -11,18 +11,21 @@
 // SPDX-License-Identifier: MIT
 
 import { SectionLabel } from "../ui/SectionLabel";
+import { WorkflowGraph, type WorkflowGraphNode, type WorkflowGraphWire } from "./WorkflowGraph";
 import { WorkflowTemplateCard, type WorkflowTemplate } from "./WorkflowTemplateCard";
 
 interface WorkflowConsoleProps {
   templates: WorkflowTemplate[];
   selectedId?: string;
+  /** The selected template's workflow. */
+  graph: { nodes: WorkflowGraphNode[]; wires: WorkflowGraphWire[] };
 }
 
 /**
  * Workflow Console layout (Figma D.1): the template picker, then the execution
  * planner for the selected template. Display only; PageWorkflows supplies the data.
  */
-export function WorkflowConsole({ templates, selectedId }: WorkflowConsoleProps) {
+export function WorkflowConsole({ templates, selectedId, graph }: WorkflowConsoleProps) {
   return (
     <div className="flex flex-1 flex-col gap-6 overflow-y-auto p-6">
       <section className="flex flex-col gap-3">
@@ -36,7 +39,8 @@ export function WorkflowConsole({ templates, selectedId }: WorkflowConsoleProps)
 
       <section className="flex flex-col gap-3">
         <SectionLabel>Workflow Execution Planner</SectionLabel>
-        {/* TODO(PPLT-211): graph and plan summary. */}
+        {/* TODO(PPLT-211): planner panel around the graph, with the plan summary. */}
+        <WorkflowGraph nodes={graph.nodes} wires={graph.wires} className="h-[628px] max-w-[772px]" />
       </section>
     </div>
   );
