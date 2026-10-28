@@ -1,0 +1,73 @@
+name: lint-workflows
+
+# actionlint (with shellcheck for run: scripts) and zizmor over the workflows
+# and composite actions. Config is in .github/actionlint.yaml and
+# .github/zizmor.yml
+
+on:
+  push:
+    branches: [devel]
+    paths: [".github/**"]
+  pull_request:
+    branches: [main, devel]
+    paths: [".github/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  lint:
+    name: "lint"
+    runs-on: ubuntu-26.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install actionlint, shellcheck and zizmor
+        env:
+          ACTIONLINT_VERSION: 1.7.12
+          ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+          SHELLCHECK_VERSION: v0.11.0
+          SHELLCHECK_SHA256: b7af85e41cc99489dcc21d66c6d5f3685138f06d34651e6d34b42ec6d54fe6f6
+          ZIZMOR_VERSION: v1.31.1
+          ZIZMOR_SHA256: d185f726bdaf92df78273217dfdd24ebcd6b0ef48cf3ce776ff5762b6e138c99
+        # GITHUB_PATH only gets the fixed directory created here, which holds
+        # just the checksum-verified binaries; no input reaches it
+        run: | # zizmor: ignore[github-env]
+          bin="$RUNNER_TEMP/lint-tools"
+          mkdir -p "$bin"
+          cd "$RUNNER_TEMP"
+          fetch() {
+            curl -sSfL -o "$2" "$1"
+            echo "$3  $2" | sha256sum -c
+          }
+          fetch "https://github.com/rhysd/actionlint/releases/download/v$ACTIONLINT_VERSION/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" \
+            actionlint.tgz "$ACTIONLINT_SHA256"
+          tar -xzf actionlint.tgz -C "$bin" actionlint
+          # actionlint runs whichever shellcheck is on PATH, so pin that too
+          fetch "https://github.com/koalaman/shellcheck/releases/download/$SHELLCHECK_VERSION/shellcheck-$SHELLCHECK_VERSION.linux.x86_64.tar.gz" \
+            shellcheck.tgz "$SHELLCHECK_SHA256"
+          tar -xzf shellcheck.tgz -C "$bin" --strip-components 1 "shellcheck-$SHELLCHECK_VERSION/shellcheck"
+          fetch "https://github.com/zizmorcore/zizmor/releases/download/$ZIZMOR_VERSION/zizmor-x86_64-unknown-linux-gnu.tar.gz" \
+            zizmor.tgz "$ZIZMOR_SHA256"
+          tar -xzf zizmor.tgz -C "$bin" zizmor
+          echo "$bin" >> "$GITHUB_PATH"
+      - name: actionlint
+        run: |
+          shellcheck --version
+          actionlint -version
+          actionlint -color
+      - name: zizmor
+        if: ${{ !cancelled() }}
+        env:
+          # For the online audits, such as known-vulnerable or impostor actions
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          zizmor --version
+          zizmor --format=github .

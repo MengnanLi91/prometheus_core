@@ -11,6 +11,9 @@ run-name: >-
 # The -devel suffix keeps these separate from future release images.
 
 on:
+  # zizmor: ignore[dangerous-triggers] Only acts on successful push runs of
+  # test on devel (see meta's if), and builds that already-merged commit, never
+  # PR code. It gets no artifacts or other input from the triggering run
   workflow_run:
     workflows: [test]
     types: [completed]
@@ -40,6 +43,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           # The commit that was tested, not the current tip of devel
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
       - name: Compute tag
@@ -52,9 +56,11 @@ jobs:
           # ghcr.io/idaholab/prometheus_core upstream; a fork publishes to its
           # own namespace. ghcr.io requires lowercase names
           prefix="ghcr.io/${GITHUB_REPOSITORY,,}"
-          echo "sha=$sha" >> "$GITHUB_OUTPUT"
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          echo "prefix=$prefix" >> "$GITHUB_OUTPUT"
+          {
+            echo "sha=$sha"
+            echo "tag=$tag"
+            echo "prefix=$prefix"
+          } >> "$GITHUB_OUTPUT"
 
   sdk:
     name: "sdk ${{ needs.meta.outputs.tag }}"
