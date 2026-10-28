@@ -145,10 +145,13 @@ def test_init_env_takes_llm_key_from_environment(tmp_path, env_example_path, mon
     assert written["LLM_CONFIG_PROFILE"] == "anthropic"
     assert written["LLM_API_KEY"] == "sk-from-env"
 
-    # A key already in .env wins over the environment
+    # A profile and key already in .env win over the environment
+    monkeypatch.setenv("LLM_CONFIG_PROFILE", "openai")
     monkeypatch.setenv("LLM_API_KEY", "sk-other")
     assert init_env.main() == 0
-    assert init_env.values(env.read_text())["LLM_API_KEY"] == "sk-from-env"
+    rerun = init_env.values(env.read_text())
+    assert rerun["LLM_CONFIG_PROFILE"] == "anthropic"
+    assert rerun["LLM_API_KEY"] == "sk-from-env"
 
 
 def test_init_env_prompts_for_profile_and_key(tmp_path, env_example_path, monkeypatch):
