@@ -1,0 +1,44 @@
+name: Feature or Enhancement Request
+description: New features or enhancements to existing capabilities
+labels: ["enhancement"]
+
+body:
+- type: dropdown
+  attributes:
+    label: Component
+    description: Which part of the repository would this change?
+    multiple: true
+    options:
+      - platform (backend)
+      - platform (frontend)
+      - platform (agents / orchestrator)
+      - sdk (prometheus_api)
+      - agent-template
+      - other / not sure
+  validations:
+    required: true
+- type: textarea
+  attributes:
+    label: Motivation
+    description: |
+      Why do you need this feature or enhancement?
+  validations:
+    required: true
+- type: textarea
+  attributes:
+    label: Design
+    description: |
+      A concise description (design) of the feature or enhancement.
+  validations:
+    required: true
+- type: textarea
+  attributes:
+    label: Impact
+    description: |
+      Will the enhancement change existing APIs or add something new?
+  validations:
+    required: true
+- type: markdown
+  attributes:
+    value: >
+      Thanks for contributing!
