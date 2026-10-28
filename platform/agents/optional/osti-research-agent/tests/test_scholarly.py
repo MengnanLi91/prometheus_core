@@ -177,3 +177,22 @@ def test_empty_error_messages_name_the_error_type(caplog):
         asyncio.run(scholarly.search_arxiv("neutron steel", 5))
 
     assert caplog.records[-1].getMessage() == "arXiv search failed: ReadTimeout"
+
+
+@respx.mock
+def test_arxiv_can_be_turned_off():
+    respx.get(scholarly.OPENALEX_URL).mock(return_value=httpx.Response(200, json={"results": []}))
+    arxiv = respx.get(scholarly.ARXIV_URL).mock(return_value=httpx.Response(200, text=_ARXIV_ATOM))
+
+    hits = asyncio.run(scholarly.search_scholarly("materials", 10, arxiv=False))
+
+    assert hits == [] and arxiv.call_count == 0
+
+
+def test_scholarly_arxiv_setting(monkeypatch):
+    from research_agent.core.config import AgentConfig
+
+    monkeypatch.setenv("SCHOLARLY_ARXIV", "false")
+    assert AgentConfig.from_env().scholarly_arxiv is False
+    monkeypatch.delenv("SCHOLARLY_ARXIV")
+    assert AgentConfig.from_env().scholarly_arxiv is True

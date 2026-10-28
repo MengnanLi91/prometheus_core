@@ -77,6 +77,9 @@ class AgentConfig(BaseModel):
     # OpenAlex asks callers to identify themselves via a mailto for the polite
     # pool; harmless when unset.
     openalex_mailto: Optional[str] = None
+    # arXiv rate-limits API clients hard (HTTP 429 even 3 s apart) and adds
+    # little for engineering-materials questions; turn it off to save the calls.
+    scholarly_arxiv: bool = True
     # LiteLLM alias for the embedding model backing the knowledge store's
     # semantic atomic-fact and answer retrieval.
     embedding_model: str = "embedding"
@@ -151,6 +154,7 @@ class AgentConfig(BaseModel):
             docling_table_mode=os.getenv("DOCLING_TABLE_MODE", "accurate").strip().lower(),
             parse_ocr=os.getenv("PARSE_OCR", "auto"),
             analyze_figures=_env_bool("ANALYZE_FIGURES", default=False),
+            scholarly_arxiv=_env_bool("SCHOLARLY_ARXIV", default=True),
             max_figures=int(os.getenv("MAX_FIGURES", "12")),
             min_figure_area=int(os.getenv("MIN_FIGURE_AREA", "10000")),
             web_search_provider=os.getenv("WEB_SEARCH_PROVIDER", "none"),

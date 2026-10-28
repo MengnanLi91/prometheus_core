@@ -43,7 +43,7 @@ def _tool(tools, name):
 
 
 def test_search_scholarly_records_hits_with_oa_pdf(monkeypatch):
-    async def fake_scholarly(query, k, *, mailto=None):
+    async def fake_scholarly(query, k, *, mailto=None, arxiv=True):
         assert k == 6
         return [
             {
@@ -75,7 +75,7 @@ def test_search_scholarly_records_hits_with_oa_pdf(monkeypatch):
 
 
 def test_search_scholarly_omits_hits_already_returned_by_another_query(monkeypatch):
-    async def fake_scholarly(query, k, *, mailto=None):
+    async def fake_scholarly(query, k, *, mailto=None, arxiv=True):
         return [
             {
                 "source_id": "10.1234_abc",
@@ -103,7 +103,7 @@ def test_search_scholarly_omits_hits_already_returned_by_another_query(monkeypat
 def test_search_scholarly_deduplicates_and_caps_queries(monkeypatch):
     calls = []
 
-    async def fake_scholarly(query, k, *, mailto=None):
+    async def fake_scholarly(query, k, *, mailto=None, arxiv=True):
         calls.append(query)
         return []
 

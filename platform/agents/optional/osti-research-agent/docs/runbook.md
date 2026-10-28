@@ -36,6 +36,7 @@ defaults.
 | `TAVILY_API_KEY` | — | credential for Tavily web search |
 | `SEARXNG_URL` | — | base URL for a self-hosted SearXNG instance |
 | `OPENALEX_MAILTO` | — | identifies the caller to OpenAlex's polite pool |
+| `SCHOLARLY_ARXIV` | `true` | also search arXiv; `false` skips it (arXiv answers 429 to frequent API clients and has little engineering-materials data) |
 | `EMBEDDING_MODEL` | `embedding` | LiteLLM alias for the knowledge-store embeddings |
 | `MAX_PDF_MB` | `50` | maximum download size for arbitrary non-OSTI PDF URLs |
 | `DOWNLOAD_ALLOWED_DOMAINS` | built-in list | comma-separated hosts PDFs may be downloaded from (subdomains included). Others are never fetched, and search results only offer `oa_pdf_url` for them; a host that answers 401/403 is dropped for the rest of the run. The OSTI purl path is always allowed. Default list: `research_agent/download_policy.py` |

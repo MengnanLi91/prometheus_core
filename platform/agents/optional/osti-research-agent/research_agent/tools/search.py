@@ -87,6 +87,7 @@ def build_search_tools(ctx: RunContext) -> List[BaseTool]:
             query,
             min(max_results, _MAX_SCHOLARLY_RESULTS),
             mailto=ctx.config.openalex_mailto,
+            arxiv=ctx.config.scholarly_arxiv,
         )
         out = []
         for h in hits:

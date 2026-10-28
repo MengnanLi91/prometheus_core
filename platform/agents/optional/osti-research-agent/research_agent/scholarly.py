@@ -221,18 +221,21 @@ def _dedupe_key(hit: dict) -> str:
 
 
 async def search_scholarly(
-    query: str, k: int = 10, *, mailto: Optional[str] = None
+    query: str, k: int = 10, *, mailto: Optional[str] = None, arxiv: bool = True
 ) -> List[dict]:
-    """OpenAlex first (comprehensive index), then arXiv preprints to fill in.
-    Deduped by DOI/title, capped at ``k``."""
-    openalex, arxiv = await asyncio.gather(
+    """OpenAlex first (comprehensive index), then arXiv preprints to fill in
+    (``arxiv=False`` skips it). Deduped by DOI/title, capped at ``k``."""
+    async def no_arxiv() -> List[dict]:
+        return []
+
+    openalex, arxiv_hits = await asyncio.gather(
         search_openalex(query, k, mailto=mailto),
-        search_arxiv(query, max(3, k // 3)),
+        search_arxiv(query, max(3, k // 3)) if arxiv else no_arxiv(),
     )
 
     merged: List[dict] = []
     seen = set()
-    for hit in openalex + arxiv:
+    for hit in openalex + arxiv_hits:
         key = _dedupe_key(hit)
         if key in seen or not hit.get("title"):
             continue

@@ -76,7 +76,7 @@ def test_domains_come_from_the_environment(monkeypatch):
 
 
 def test_scholarly_results_only_offer_allowed_pdfs(monkeypatch, tmp_path):
-    async def fake_scholarly(query, k, *, mailto=None):
+    async def fake_scholarly(query, k, *, mailto=None, arxiv=True):
         return [
             {"source_id": "a", "title": "A", "oa_pdf_url": "https://arxiv.org/pdf/a"},
             {"source_id": "b", "title": "B", "oa_pdf_url": "https://www.mdpi.com/b/pdf"},
