@@ -39,3 +39,14 @@ def _no_network_synthesis(request, monkeypatch):
         return None
 
     monkeypatch.setattr(synthesis, "synthesize", no_synthesis)
+
+
+@pytest.fixture(autouse=True)
+def _no_arxiv_spacing(monkeypatch):
+    """The arXiv request gap is 3 s in production; tests run without it."""
+    from research_agent import scholarly
+
+    monkeypatch.setattr(scholarly, "ARXIV_MIN_INTERVAL_S", 0.0)
+    monkeypatch.setattr(scholarly, "_ARXIV_RETRY_AFTER_S", 0.0)
+    monkeypatch.setattr(scholarly, "_arxiv_lock", None)
+    monkeypatch.setattr(scholarly, "_arxiv_last_request", 0.0)

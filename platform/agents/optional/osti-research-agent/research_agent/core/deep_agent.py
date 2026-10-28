@@ -291,10 +291,19 @@ def _parsed_paper_directory(source_id: str, ctx: RunContext) -> str:
 
 
 def _analysis_description(question: str, paper_directory: str) -> str:
+    # The nearest rule is in the system prompt too, but analyzers still declined
+    # papers whose data sat outside the asked conditions; stating it with the
+    # task, per paper, is what they act on.
     return (
         f"Research question:\n{question.strip()}\n\n"
         f"Parsed paper directory: {paper_directory}\n\n"
-        "Analyze only this paper and return the required Finding JSON."
+        "Analyze only this paper and return the required Finding JSON.\n\n"
+        "If the paper reports the asked quantity for this material at ANY "
+        "conditions - even far from those asked - do not answer "
+        '`answered: false`: return a Finding with `match: "nearest"` holding the '
+        "reported values closest to the asked conditions, and state the "
+        "conditions they were reported at. Use `answered: false` only when the "
+        "paper has no values of the asked quantity for this material at all."
     )
 
 

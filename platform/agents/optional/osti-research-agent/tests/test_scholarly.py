@@ -126,3 +126,54 @@ def test_openalex_failure_degrades_to_empty():
     respx.get(scholarly.OPENALEX_URL).mock(return_value=httpx.Response(500))
     hits = asyncio.run(scholarly.search_openalex("x", 5))
     assert hits == []
+
+
+@respx.mock
+def test_arxiv_retries_once_after_a_429():
+    route = respx.get(scholarly.ARXIV_URL).mock(
+        side_effect=[
+            httpx.Response(429, headers={"Retry-After": "0"}),
+            httpx.Response(200, text=_ARXIV_ATOM),
+        ]
+    )
+
+    hits = asyncio.run(scholarly.search_arxiv("neutron steel", 5))
+
+    assert route.call_count == 2 and len(hits) == 1
+
+
+@respx.mock
+def test_arxiv_gives_up_after_a_second_429(caplog):
+    respx.get(scholarly.ARXIV_URL).mock(return_value=httpx.Response(429))
+
+    with caplog.at_level("WARNING", logger="research_agent.scholarly"):
+        hits = asyncio.run(scholarly.search_arxiv("neutron steel", 5))
+
+    assert hits == []
+    assert "429" in caplog.records[-1].getMessage()
+
+
+@respx.mock
+def test_arxiv_requests_are_spaced(monkeypatch):
+    monkeypatch.setattr(scholarly, "ARXIV_MIN_INTERVAL_S", 0.3)
+    respx.get(scholarly.ARXIV_URL).mock(return_value=httpx.Response(200, text=_ARXIV_ATOM))
+    import time
+
+    async def two_at_once():
+        start = time.monotonic()
+        await asyncio.gather(
+            scholarly.search_arxiv("a", 1), scholarly.search_arxiv("b", 1)
+        )
+        return time.monotonic() - start
+
+    assert asyncio.run(two_at_once()) >= 0.3
+
+
+@respx.mock
+def test_empty_error_messages_name_the_error_type(caplog):
+    respx.get(scholarly.ARXIV_URL).mock(side_effect=httpx.ReadTimeout(""))
+
+    with caplog.at_level("WARNING", logger="research_agent.scholarly"):
+        asyncio.run(scholarly.search_arxiv("neutron steel", 5))
+
+    assert caplog.records[-1].getMessage() == "arXiv search failed: ReadTimeout"

@@ -26,6 +26,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
+import time
 import xml.etree.ElementTree as ET
 from typing import Dict, List, Optional
 
@@ -113,7 +114,7 @@ async def search_openalex(
             resp.raise_for_status()
             data = resp.json()
     except Exception as e:
-        logger.warning("OpenAlex search failed: %s", e)
+        logger.warning("OpenAlex search failed: %s", _error_text(e))
         return []
     return [_openalex_hit(w) for w in data.get("results", [])[:k]]
 
@@ -151,6 +152,49 @@ def _arxiv_entry(entry: ET.Element) -> dict:
     }
 
 
+# arXiv asks API clients for at most one request every 3 seconds and answers
+# 429 past that. Scholarly searches can run concurrently, so requests share
+# one gate per process.
+ARXIV_MIN_INTERVAL_S = 3.0
+_ARXIV_RETRY_AFTER_S = 5.0
+_arxiv_lock: Optional[asyncio.Lock] = None
+_arxiv_last_request = 0.0
+
+
+async def _arxiv_get(client: httpx.AsyncClient, params: dict) -> httpx.Response:
+    """GET the arXiv API, spaced at least ARXIV_MIN_INTERVAL_S from the last
+    request in this process; one retry after a 429."""
+    global _arxiv_lock, _arxiv_last_request
+    if _arxiv_lock is None:
+        _arxiv_lock = asyncio.Lock()
+    for attempt in range(2):
+        async with _arxiv_lock:
+            wait = ARXIV_MIN_INTERVAL_S - (time.monotonic() - _arxiv_last_request)
+            if wait > 0:
+                await asyncio.sleep(wait)
+            try:
+                resp = await client.get(ARXIV_URL, params=params)
+            finally:
+                _arxiv_last_request = time.monotonic()
+        if resp.status_code != 429 or attempt == 1:
+            return resp
+        await asyncio.sleep(_retry_after(resp))
+    return resp  # pragma: no cover - the loop always returns
+
+
+def _retry_after(resp: httpx.Response) -> float:
+    value = resp.headers.get("Retry-After", "")
+    try:
+        return min(max(float(value), 0.0), 30.0)
+    except ValueError:
+        return _ARXIV_RETRY_AFTER_S
+
+
+def _error_text(e: Exception) -> str:
+    """``str(e)`` is empty for some httpx errors (timeouts); name the type."""
+    return str(e).splitlines()[0] if str(e).strip() else type(e).__name__
+
+
 async def search_arxiv(query: str, k: int = 5) -> List[dict]:
     params = {
         "search_query": f"all:{query}",
@@ -161,11 +205,11 @@ async def search_arxiv(query: str, k: int = 5) -> List[dict]:
         async with httpx.AsyncClient(
             timeout=_TIMEOUT, headers={"User-Agent": _USER_AGENT}
         ) as client:
-            resp = await client.get(ARXIV_URL, params=params)
+            resp = await _arxiv_get(client, params)
             resp.raise_for_status()
             root = ET.fromstring(resp.text)
     except Exception as e:
-        logger.warning("arXiv search failed: %s", e)
+        logger.warning("arXiv search failed: %s", _error_text(e))
         return []
     return [_arxiv_entry(e) for e in root.findall(f"{_ATOM}entry")][:k]
 

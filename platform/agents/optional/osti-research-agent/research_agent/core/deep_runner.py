@@ -29,9 +29,9 @@ from __future__ import annotations
 import logging
 import shutil
 import uuid
-from typing import AsyncIterator, Dict, Iterator, List, Optional
+from typing import Any, AsyncIterator, Dict, Iterator, List, Optional
 
-from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from research_agent import citations, llm_steps
 from research_agent.core import synthesis
@@ -301,6 +301,63 @@ async def build_final_result(
     )
 
 
+# How many times a run that ends with no findings, while paper and time budget
+# remain and downloadable results are unread, is sent back to read them. The
+# orchestrator prompt asks for this too, but models stop early anyway.
+MAX_NUDGES = 2
+_NUDGE_RESULTS = 8
+
+
+def _unread_results(ctx: RunContext) -> List[tuple]:
+    """Search hits that could still be read: not yet downloaded or failed,
+    and downloadable (an OSTI id, or an allowed PDF link)."""
+    unread = []
+    for source_id, hit in ctx.search_hits.items():
+        if source_id in ctx.pdf_paths or source_id in ctx.download_failures:
+            continue
+        if source_id in ctx.parse_failures or source_id in ctx.paper_analysis_results:
+            continue
+        osti = source_id.isdigit() or str(hit.get("origin") or "osti") == "osti"
+        if osti or hit.get("oa_pdf_url"):
+            unread.append((source_id, hit))
+    return unread
+
+
+def keep_going_nudge(ctx: RunContext) -> Optional[str]:
+    """A follow-up instruction when the orchestrator stopped with nothing
+    verified but could still read more, else None."""
+    if ctx.findings or ctx.budget_reason() is not None:
+        return None
+    unread = _unread_results(ctx)
+    if not unread:
+        return None
+    slots = ctx.config.max_papers_analyzed - ctx.papers_attempted
+    lines = [
+        f"You stopped with no verified findings, but {slots} paper slot(s) and "
+        f"about {int(ctx.seconds_left() // 60)} minute(s) remain, and these "
+        "search results are unread:",
+    ]
+    for source_id, hit in unread[:_NUDGE_RESULTS]:
+        title = " ".join(str(hit.get("title") or "").split())[:140]
+        lines.append(f"- {source_id}: {title}")
+    lines.append(
+        "Download, parse and analyze the most promising of them now. A paper "
+        "with the asked quantity for this material at any conditions is a "
+        'useful `match: "nearest"` finding. Emit the final JSON only when none '
+        "of them could bear on the question or the paper budget is used."
+    )
+    return "\n".join(lines)
+
+
+def _update_messages(chunk: Dict) -> List[Any]:
+    out: List[Any] = []
+    if isinstance(chunk, dict):
+        for node_out in chunk.values():
+            if isinstance(node_out, dict):
+                out.extend(node_out.get("messages", []) or [])
+    return out
+
+
 async def run_deep(
     question: str,
     config: AgentConfig,
@@ -357,25 +414,40 @@ async def run_deep(
         agent = build_research_agent(config, ctx)
 
         final_text = ""
-        async for mode, chunk in agent.astream(
-            {"messages": [{"role": "user", "content": question}]},
-            stream_mode=["updates", "custom"],
-            config={
-                "recursion_limit": RECURSION_LIMIT,
-                "configurable": {"thread_id": run_id},
-            },
-        ):
-            if mode == "custom":
-                if isinstance(chunk, dict) and chunk.get("message"):
-                    yield ProgressEvent(
-                        message=chunk["message"], detail=chunk.get("detail")
-                    )
-            elif mode == "updates":
-                text = _last_ai_text(chunk)
-                if text:
-                    final_text = text
-                for event in translate_update(chunk, ctx):
-                    yield event
+        # The graph has no checkpointer, so a follow-up round restarts from the
+        # whole conversation so far plus the nudge.
+        messages: List[Any] = [HumanMessage(content=question)]
+        for round_no in range(MAX_NUDGES + 1):
+            round_messages: List[Any] = []
+            async for mode, chunk in agent.astream(
+                {"messages": messages},
+                stream_mode=["updates", "custom"],
+                config={
+                    "recursion_limit": RECURSION_LIMIT,
+                    "configurable": {"thread_id": f"{run_id}-{round_no}"},
+                },
+            ):
+                if mode == "custom":
+                    if isinstance(chunk, dict) and chunk.get("message"):
+                        yield ProgressEvent(
+                            message=chunk["message"], detail=chunk.get("detail")
+                        )
+                elif mode == "updates":
+                    round_messages.extend(_update_messages(chunk))
+                    text = _last_ai_text(chunk)
+                    if text:
+                        final_text = text
+                    for event in translate_update(chunk, ctx):
+                        yield event
+            nudge = keep_going_nudge(ctx)
+            if nudge is None or round_no == MAX_NUDGES:
+                break
+            yield ProgressEvent(
+                message="No verified findings yet; reading unread results "
+                f"({ctx.config.max_papers_analyzed - ctx.papers_attempted} paper "
+                "slot(s) left)"
+            )
+            messages = [*messages, *round_messages, HumanMessage(content=nudge)]
 
         if ctx.findings:
             yield ProgressEvent(

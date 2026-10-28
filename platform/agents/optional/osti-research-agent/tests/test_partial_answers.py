@@ -230,3 +230,103 @@ def test_analyzer_returns_the_closest_condition_however_far():
 
     assert "however far its conditions are from those asked" in analyzer
     assert "never apply a fitted equation outside the range" in analyzer
+
+
+# --- keep-going nudge ------------------------------------------------------
+
+
+def _nudge_ctx(**config):
+    from research_agent.tools import RunContext
+
+    ctx = RunContext(
+        config=AgentConfig(litellm_base_url="http://unused", **config), complete=None
+    )
+    ctx.search_hits = {
+        "706175": {"title": "Creep of 316 at 500-871 C", "origin": "osti"},
+        "10.1_x": {"title": "OA paper", "origin": "openalex", "oa_pdf_url": "https://arxiv.org/x"},
+        "10.1_y": {"title": "Paywalled", "origin": "openalex", "oa_pdf_url": None},
+        "read": {"title": "Already read", "origin": "osti"},
+    }
+    ctx.pdf_paths["read"] = "/tmp/read.pdf"
+    return ctx
+
+
+def test_nudge_lists_only_unread_downloadable_results():
+    nudge = deep_runner.keep_going_nudge(_nudge_ctx())
+
+    assert "5 paper slot(s)" in nudge
+    assert "706175: Creep of 316 at 500-871 C" in nudge and "10.1_x: OA paper" in nudge
+    assert "Paywalled" not in nudge and "Already read" not in nudge
+
+
+def test_no_nudge_once_there_is_a_finding_or_no_budget():
+    with_finding = _nudge_ctx()
+    with_finding.findings.append(Finding(source_id="1", answer="a"))
+    out_of_slots = _nudge_ctx(max_papers_analyzed=2)
+    out_of_slots.papers_attempted = 2
+    nothing_left = _nudge_ctx()
+    nothing_left.search_hits = {}
+
+    for ctx in (with_finding, out_of_slots, nothing_left):
+        assert deep_runner.keep_going_nudge(ctx) is None
+
+
+class _RoundGraph:
+    """Each astream call is one orchestrator round ending with {"findings": []}."""
+
+    def __init__(self, ctx, find_on_round=None):
+        self.ctx, self.find_on_round, self.inputs = ctx, find_on_round, []
+
+    async def astream(self, payload, *, stream_mode=None, config=None):
+        self.inputs.append(payload["messages"])
+        if len(self.inputs) == self.find_on_round:
+            self.ctx.findings.append(Finding(source_id="706175", answer="a", evidence="T1"))
+        yield ("updates", {"model": {"messages": [AIMessage(content='{"findings": []}')]}})
+
+
+def _run_rounds(monkeypatch, find_on_round=None):
+    async def no_followups(**kwargs):
+        return []
+
+    monkeypatch.setattr(llm_steps, "suggest_followup_from_findings", no_followups)
+    graphs = []
+
+    def build(config, ctx):
+        ctx.search_hits.update(_nudge_ctx().search_hits)
+        graphs.append(_RoundGraph(ctx, find_on_round))
+        return graphs[0]
+
+    monkeypatch.setattr(deep_runner, "build_research_agent", build)
+
+    async def go():
+        return [
+            e async for e in deep_runner.run_deep(
+                "q", AgentConfig(litellm_base_url="http://unused"), "r", complete=None
+            )
+        ]
+
+    return asyncio.run(go()), graphs[0]
+
+
+def test_empty_rounds_are_sent_back_at_most_twice(monkeypatch):
+    events, graph = _run_rounds(monkeypatch)
+
+    assert len(graph.inputs) == 1 + deep_runner.MAX_NUDGES
+    second = graph.inputs[1]
+    assert second[0].content == "q"  # the question is kept
+    assert "paper slot(s)" in second[-1].content  # the nudge is last
+    assert events[-1].status == "no_results"
+
+
+def test_a_round_that_finds_something_ends_the_run(monkeypatch):
+    events, graph = _run_rounds(monkeypatch, find_on_round=2)
+
+    assert len(graph.inputs) == 2
+    assert events[-1].status == "completed"
+
+
+def test_analyzer_task_message_asks_for_nearest_data():
+    message = deep_agent._analysis_description("What is X at 400 C?", "/papers/1")
+
+    assert 'match: "nearest"' in message and "ANY conditions" in message
+    assert "only when the paper has no values of the asked quantity" in message
