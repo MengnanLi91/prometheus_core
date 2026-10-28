@@ -270,8 +270,6 @@ class OSTIResearchAgent(PrometheusAgent):
         config = AgentConfig.from_env()
 
         llm_config = LLMConfig.from_env()
-        if llm_config.proxy_url:
-            llm_config = llm_config.with_api_key(os.getenv("LITELLM_MASTER_KEY"))
         config = apply_model_profile(config, llm_config)
 
         final = None

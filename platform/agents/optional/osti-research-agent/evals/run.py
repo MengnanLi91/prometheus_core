@@ -88,9 +88,7 @@ def _select_questions(
 
 
 def _configured_agent_config(llm_config: Any) -> AgentConfig:
-    """Resolve the same registry/direct model profile used by the A2A agent."""
-    if llm_config.proxy_url:
-        llm_config = llm_config.with_api_key(os.getenv("LITELLM_MASTER_KEY"))
+    """Resolve the same model profile the A2A agent uses."""
     return apply_model_profile(AgentConfig.from_env(), llm_config)
 
 

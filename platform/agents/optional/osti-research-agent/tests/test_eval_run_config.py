@@ -49,7 +49,9 @@ class _DirectConfig:
         }
 
 
-def test_eval_registry_profile_uses_proxy_url_and_key(monkeypatch):
+def test_eval_profile_with_a_proxy_url_keeps_its_own_key(monkeypatch):
+    # The platform no longer has an LLM proxy (26e196dd): the profile's key is
+    # used as-is, never swapped for LITELLM_MASTER_KEY.
     monkeypatch.setenv("REGISTRY_URL", "http://stale-registry:4000")
     monkeypatch.setenv("LITELLM_MASTER_KEY", "registry-key")
 
@@ -57,7 +59,7 @@ def test_eval_registry_profile_uses_proxy_url_and_key(monkeypatch):
 
     route = config.model_route("orchestrator")
     assert route.base_url == "http://registry.example:4000"
-    assert route.api_key == "registry-key"
+    assert route.api_key is None
     assert route.model == "medium"
 
 
