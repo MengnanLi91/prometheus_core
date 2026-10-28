@@ -119,6 +119,38 @@ async def search_openalex(
     return [_openalex_hit(w) for w in data.get("results", [])[:k]]
 
 
+async def openalex_oa_pdf_url(
+    doi: str, *, mailto: Optional[str] = None
+) -> Optional[str]:
+    """The best open-access PDF OpenAlex knows for ``doi``, or None."""
+    doi = (doi or "").strip()
+    for prefix in ("https://doi.org/", "http://doi.org/", "doi:"):
+        if doi.lower().startswith(prefix):
+            doi = doi[len(prefix):]
+            break
+    if not doi:
+        return None
+    params = {"mailto": mailto} if mailto else None
+    try:
+        async with httpx.AsyncClient(
+            timeout=_TIMEOUT, headers={"User-Agent": _USER_AGENT}
+        ) as client:
+            resp = await client.get(f"{OPENALEX_URL}/doi:{doi}", params=params)
+            if resp.status_code == 404:
+                return None
+            resp.raise_for_status()
+            work = resp.json()
+    except Exception as e:
+        logger.warning("OpenAlex DOI lookup failed for %s: %s", doi, _error_text(e))
+        return None
+    locations = [work.get("best_oa_location") or {}]
+    locations += [loc or {} for loc in work.get("oa_locations") or []]
+    for loc in locations:
+        if loc.get("pdf_url"):
+            return loc["pdf_url"]
+    return None
+
+
 def _arxiv_entry(entry: ET.Element) -> dict:
     def text(tag: str) -> str:
         el = entry.find(f"{_ATOM}{tag}")

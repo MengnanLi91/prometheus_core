@@ -31,7 +31,7 @@ from typing import List, Optional
 
 from langchain_core.tools import BaseTool, tool
 
-from research_agent import download_policy, osti_client
+from research_agent import download_policy, osti_client, scholarly
 from research_agent.parsing import pipeline as parse_pipeline
 from research_agent.parsing.artifacts import ParsedPaper, _safe_source_id
 from research_agent.tools import progress
@@ -81,6 +81,45 @@ def _parse_summary(parsed: ParsedPaper, safe_id: str) -> dict:
         ],
         "warnings": parsed.warnings,
     }
+
+
+async def _download_url(ctx: RunContext, source_id: str, url: str) -> Optional[str]:
+    # Inside the run workdir so concurrent runs never share a file and the
+    # download is removed with the rest of the run.
+    downloads = ctx.run_workdir / "downloads"
+    downloads.mkdir(parents=True, exist_ok=True)
+    dest = str(downloads / f"{_safe_source_id(source_id)}.pdf")
+    return await asyncio.to_thread(
+        osti_client.download_pdf_from_url,
+        url,
+        dest,
+        max_bytes=ctx.config.max_pdf_mb * 1024 * 1024,
+        cache=ctx.pdf_cache,
+        on_status=lambda status: _note_refusal(ctx, url, status),
+    )
+
+
+async def _open_access_copy(ctx: RunContext, source_id: str, doi: str) -> Optional[str]:
+    """OSTI has a record but no full text: try the open-access copy OpenAlex
+    lists for the record's DOI, if its host is on the download allowlist."""
+    url = await scholarly.openalex_oa_pdf_url(doi, mailto=ctx.config.openalex_mailto)
+    if not url:
+        progress.emit(
+            f"OSTI #{source_id} has no full text and no open-access copy of DOI {doi}",
+            {"source_id": source_id, "doi": doi},
+        )
+        return None
+    if not ctx.can_download(url):
+        progress.emit(
+            f"OSTI #{source_id}: open-access copy {url} is not on the download allowlist",
+            {"source_id": source_id, "doi": doi, "host": download_policy.host_of(url)},
+        )
+        return None
+    progress.emit(
+        f"OSTI #{source_id} has no full text; downloading the open-access copy {url}",
+        {"source_id": source_id, "doi": doi},
+    )
+    return await _download_url(ctx, source_id, url)
 
 
 def _note_refusal(ctx: RunContext, url: str, status: int) -> None:
@@ -225,24 +264,14 @@ def build_osti_tools(ctx: RunContext) -> List[BaseTool]:
 
         if direct_url:
             progress.emit(f"Downloading {source_id} from {direct_url}")
-            # Inside the run workdir so concurrent runs never share a file and
-            # the download is removed with the rest of the run.
-            downloads = ctx.run_workdir / "downloads"
-            downloads.mkdir(parents=True, exist_ok=True)
-            dest = str(downloads / f"{_safe_source_id(source_id)}.pdf")
-            pdf_path = await asyncio.to_thread(
-                osti_client.download_pdf_from_url,
-                direct_url,
-                dest,
-                max_bytes=ctx.config.max_pdf_mb * 1024 * 1024,
-                cache=ctx.pdf_cache,
-                on_status=lambda status: _note_refusal(ctx, direct_url, status),
-            )
+            pdf_path = await _download_url(ctx, source_id, direct_url)
         else:
             progress.emit(f"Downloading OSTI #{source_id}")
             pdf_path = await asyncio.to_thread(
                 osti_client.download_paper, source_id, ctx.pdf_cache
             )
+            if not pdf_path and hit.get("doi"):
+                pdf_path = await _open_access_copy(ctx, source_id, hit["doi"])
 
         if not pdf_path:
             ctx.download_failures[source_id] = "PDF not available for download"

@@ -17,6 +17,7 @@ import asyncio
 import json
 
 import pytest
+import respx
 
 from research_agent import download_policy, osti_client
 from research_agent.core.config import AgentConfig
@@ -175,3 +176,72 @@ def test_status_callback_reports_non_200(tmp_path):
         )
 
     assert out is None and statuses == [403]
+
+
+# --- open-access copy of an OSTI record without full text ----------------
+
+
+def _osti_record_ctx(tmp_path, monkeypatch, oa_url):
+    from research_agent import scholarly
+
+    monkeypatch.setattr(osti_client, "download_paper", lambda sid, cache: None)
+
+    async def lookup(doi, *, mailto=None):
+        assert doi == "10.1016/j.jnucmat.2020.1"
+        return oa_url
+
+    monkeypatch.setattr(scholarly, "openalex_oa_pdf_url", lookup)
+    ctx = _ctx(tmp_path)
+    ctx.search_hits["3729583"] = {"title": "T", "doi": "10.1016/j.jnucmat.2020.1"}
+    return ctx
+
+
+def test_osti_record_without_pdf_uses_the_open_access_copy(monkeypatch, tmp_path):
+    ctx = _osti_record_ctx(tmp_path, monkeypatch, "https://europepmc.org/x.pdf")
+    fetched = []
+
+    def fetch(url, dest, *, max_bytes, cache=None, on_status=None):
+        fetched.append(url)
+        return dest
+
+    monkeypatch.setattr(osti_client, "download_pdf_from_url", fetch)
+    download = _tool(build_osti_tools(ctx), "download_paper")
+    out = json.loads(asyncio.run(download.ainvoke({"source_id": "3729583"})))
+
+    assert out["ok"] is True and fetched == ["https://europepmc.org/x.pdf"]
+
+
+def test_open_access_copy_on_a_disallowed_host_is_not_fetched(monkeypatch, tmp_path):
+    ctx = _osti_record_ctx(tmp_path, monkeypatch, "https://www.mdpi.com/x.pdf")
+
+    def must_not_fetch(*args, **kwargs):
+        raise AssertionError("disallowed host")
+
+    monkeypatch.setattr(osti_client, "download_pdf_from_url", must_not_fetch)
+    download = _tool(build_osti_tools(ctx), "download_paper")
+    out = json.loads(asyncio.run(download.ainvoke({"source_id": "3729583"})))
+
+    assert out["ok"] is False
+
+
+@respx.mock
+def test_openalex_doi_lookup_picks_the_first_pdf_location():
+    import httpx
+
+    from research_agent import scholarly
+
+    respx.get(f"{scholarly.OPENALEX_URL}/doi:10.1/abc").mock(
+        return_value=httpx.Response(200, json={
+            "best_oa_location": {"pdf_url": None, "landing_page_url": "https://x"},
+            "oa_locations": [{"pdf_url": None}, {"pdf_url": "https://arxiv.org/pdf/1"}],
+        })
+    )
+    respx.get(f"{scholarly.OPENALEX_URL}/doi:10.1/missing").mock(
+        return_value=httpx.Response(404)
+    )
+
+    assert asyncio.run(scholarly.openalex_oa_pdf_url("https://doi.org/10.1/abc")) == (
+        "https://arxiv.org/pdf/1"
+    )
+    assert asyncio.run(scholarly.openalex_oa_pdf_url("10.1/missing")) is None
+    assert asyncio.run(scholarly.openalex_oa_pdf_url("")) is None

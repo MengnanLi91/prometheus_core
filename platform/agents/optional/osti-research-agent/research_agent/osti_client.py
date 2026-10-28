@@ -195,6 +195,9 @@ def search_osti(search_query: str, max_results: int = 15) -> List[Dict[str, Any]
                             "description": result.get("description", ""),
                             "journal_name": result.get("journal_name", ""),
                             "url": f"https://www.osti.gov/biblio/{result['osti_id']}",
+                            # A journal DOI lets download_paper find an
+                            # open-access copy when OSTI has no full text.
+                            "doi": result.get("doi") or "",
                         }
                     )
                     logger.info(
