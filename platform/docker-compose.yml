@@ -112,13 +112,7 @@ services:
 
   # LiteLLM proxy — A2A agent gateway and optional LLM proxy
   litellm:
-    build:
-      context: .
-      dockerfile: litellm.Dockerfile
-      additional_contexts:
-        certs: ../common/certs
-      args:
-        LITELLM_BASE_IMAGE: ghcr.io/berriai/litellm:v1.92.0
+    image: ghcr.io/berriai/litellm:v1.92.0
     container_name: litellm-proxy
     extra_hosts: *host-gateway
     ports:

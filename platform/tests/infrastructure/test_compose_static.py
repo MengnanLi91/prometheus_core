@@ -64,20 +64,11 @@ def test_redis_service_uses_valkey_bundle(compose_data):
     assert svc["command"][:1] == ["valkey-server"]
 
 
-def test_litellm_image_pinned_and_extended_with_local_certificates(compose_data, project_root):
-    service = compose_data["services"]["litellm"]
-    build = service["build"]
-    assert build["context"] == "."
-    assert build["dockerfile"] == "litellm.Dockerfile"
-    assert build["additional_contexts"]["certs"] == "../common/certs"
-    assert build["args"]["LITELLM_BASE_IMAGE"] == "ghcr.io/berriai/litellm:v1.92.0", (
+def test_litellm_image_pinned(compose_data):
+    image = compose_data["services"]["litellm"]["image"]
+    assert image == "ghcr.io/berriai/litellm:v1.92.0", (
         "LiteLLM 1.92.0 is the minimum pinned gateway with A2A SDK v1 routing"
     )
-
-    dockerfile = (project_root / "litellm.Dockerfile").read_text(encoding="utf-8")
-    assert "FROM ${LITELLM_BASE_IMAGE}" in dockerfile
-    assert "COPY --from=certs" in dockerfile
-    assert "SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt" in dockerfile
 
 
 def test_osti_optional_compose_preserves_platform_contract(project_root):
