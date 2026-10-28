@@ -33,13 +33,13 @@ make generate        # only (re)write docker-compose.agents.yml
 make clean-generated # delete the generated agents compose file
 
 make test-static       # infra tests that don't need Docker
-make test-integration  # infra tests against running containers
+make test-integration  # infra tests against the stack make up started
 make test-infra        # both
 
 make check           # wait until the running platform answers on its host ports and every agent is registered
 ```
 
-`make up` (and `restart`, `ng-up`, `ng-restart`) runs `docker compose up --wait` and then `make check` (`scripts/check_platform.py`), so it returns only once every healthcheck passes, the backend and frontend answer on their host ports, and every agent is registered with LiteLLM. `CHECK=false` skips both. CI's `platform: up` job runs `make up`, so a service that never goes healthy or an agent that never registers fails the build.
+`make up` (and `restart`, `ng-up`, `ng-restart`) runs `docker compose up --wait` and then `make check` (`scripts/check_platform.py`), so it returns only once every healthcheck passes, the backend and frontend answer on their host ports, and every agent is registered with LiteLLM. `CHECK=false` skips both. CI's `platform: up` job runs `make up` and then `make test-integration` against that stack (stub LLM/DeepLynx credentials; see `tests/README.md`), so a service that never goes healthy, an agent that never registers, or a failing integration test fails the build.
 
 Launch and restart targets clear LiteLLM's Postgres volume before starting services so stale agent registrations do not survive across platform launches. Valkey state is left intact.
 
