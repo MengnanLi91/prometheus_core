@@ -32,6 +32,9 @@ from typing import Any, Awaitable, Callable, Dict, Optional
 logger = logging.getLogger(__name__)
 
 PASS_SCORE = 4  # a judged question passes when every judged score is >= this
+# A reply that can't be scored is asked for again once; the judge's replies
+# vary, and one bad reply should not leave a question unjudged.
+JUDGE_ATTEMPTS = 2
 _SCORES = ("groundedness", "completeness", "reference_agreement")
 _ACCESS_TAG = re.compile(r"\s*Access:.*$", re.DOTALL)
 _PROMPT = Template((Path(__file__).with_name("judge_prompt.md")).read_text("utf-8"))
@@ -90,12 +93,31 @@ def _score(value: Any) -> Optional[int]:
     return None
 
 
+def _lenient_fields(text: str) -> Dict[str, Any]:
+    """Scores and rationale read field by field, for a reply that is almost
+    JSON - most often a rationale with an unescaped quote in it."""
+    data: Dict[str, Any] = {}
+    for key in _SCORES:
+        m = re.search(rf'"{key}"\s*:\s*(null|\d+)', text)
+        if m:
+            data[key] = None if m.group(1) == "null" else int(m.group(1))
+    m = re.search(r'"rationale"\s*:\s*"(.*)"\s*\}?\s*$', text, re.DOTALL)
+    if m:
+        data["rationale"] = m.group(1).replace('\\"', '"')
+    return data
+
+
 def parse_verdict(text: str, *, has_notes: bool) -> Dict[str, Any]:
     """Parse the judge's JSON reply; raise ValueError when it is unusable."""
     match = re.search(r"\{.*\}", text or "", re.DOTALL)
     if not match:
         raise ValueError("judge reply had no JSON object")
-    data = json.loads(match.group(0))
+    try:
+        data = json.loads(match.group(0))
+    except json.JSONDecodeError as e:
+        data = _lenient_fields(match.group(0))
+        if not data:
+            raise ValueError(f"judge reply is not valid JSON: {e}") from e
     verdict = {key: _score(data.get(key)) for key in _SCORES}
     if verdict["groundedness"] is None or verdict["completeness"] is None:
         raise ValueError("judge reply is missing a 1-5 groundedness/completeness score")
@@ -121,13 +143,21 @@ async def judge_result(
 ) -> Dict[str, Any]:
     """Judge one result; returns ``judge_*`` fields to merge into its record."""
     has_notes = bool(reference_notes(spec))
-    try:
-        reply = await complete(build_prompt(result, spec), max_tokens=400)
-        verdict = parse_verdict(reply, has_notes=has_notes)
-    except Exception as e:  # never fail the evaluation over the judge
-        logger.warning("judge failed for %s: %s", spec.get("id"), e)
-        return {"judge_error": str(e)[:300]}
-    return {f"judge_{key}": value for key, value in verdict.items()}
+    prompt = build_prompt(result, spec)
+    error: Optional[Exception] = None
+    for attempt in range(JUDGE_ATTEMPTS):
+        try:
+            reply = await complete(prompt, max_tokens=600)
+            verdict = parse_verdict(reply, has_notes=has_notes)
+        except Exception as e:  # never fail the evaluation over the judge
+            error = e
+            logger.warning(
+                "judge failed for %s (attempt %d/%d): %s",
+                spec.get("id"), attempt + 1, JUDGE_ATTEMPTS, e,
+            )
+            continue
+        return {f"judge_{key}": value for key, value in verdict.items()}
+    return {"judge_error": str(error)[:300]}
 
 
 def make_complete(config: Any) -> CompleteFn:

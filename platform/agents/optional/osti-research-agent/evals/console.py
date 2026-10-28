@@ -185,7 +185,8 @@ def print_summary(console: Console, report: Dict[str, Any]) -> None:
     if judge_errors:
         console.print(
             Text(
-                f"Judge errors ({len(judge_errors)}): those questions are unjudged.",
+                f"Judge errors ({len(judge_errors)}): those questions are unjudged "
+                "and count as failed.",
                 style="yellow",
             )
         )

@@ -48,6 +48,9 @@ def failures(record: Dict[str, Any]) -> List[str]:
         value = record.get(key)
         if isinstance(value, int) and value < JUDGE_PASS_SCORE:
             reasons.append(f"judge {label} {value}/5")
+    # An answer the judge could not score has not passed the judge.
+    if record.get("judge_error"):
+        reasons.append("not judged")
     return reasons
 
 
@@ -89,6 +92,11 @@ def explained_failures(record: Dict[str, Any]) -> List[Tuple[str, str]]:
                 f"expected text not in the answer: {_quoted(missing)}"
                 if missing
                 else "some expected facts are not in the answer"
+            )
+        elif reason == "not judged":
+            detail = (
+                "the judge's reply could not be scored "
+                f"({record.get('judge_error')}); rerun this question with --id"
             )
         elif reason.startswith("judge "):
             detail = str(record.get("judge_rationale") or "").strip() or (
@@ -210,7 +218,10 @@ def terminal_summary(report: Dict[str, Any], *, max_failures: int = 20) -> str:
         lines.extend(["", "Every question passed."])
     judge_errors = [r for r in report.get("records", []) if r.get("judge_error")]
     if judge_errors:
-        lines.extend(["", f"Judge errors ({len(judge_errors)}): those questions are unjudged."])
+        lines.extend(
+            ["", f"Judge errors ({len(judge_errors)}): those questions are unjudged "
+             "and count as failed."]
+        )
     lines.extend(["", _CAVEAT])
     return "\n".join(lines)
 

@@ -209,3 +209,71 @@ def test_completeness_has_an_explicit_scale_for_nearest_data():
     assert "2 = only nearest data that is loosely related" in text
     # Stating the gap is required, not rewarded on its own.
     assert "not a reason for a higher score" in text
+
+
+class _Sequence:
+    """Returns each reply in turn, one per call."""
+
+    def __init__(self, *replies):
+        self.replies, self.calls = list(replies), 0
+
+    async def __call__(self, prompt, *, max_tokens):
+        self.calls += 1
+        reply = self.replies.pop(0)
+        if isinstance(reply, Exception):
+            raise reply
+        return reply
+
+
+# A rationale with an unescaped quote: the "Expecting ',' delimiter" case.
+BROKEN = (
+    '{"groundedness": 5, "completeness": 3, "reference_agreement": 2, '
+    '"rationale": "It labels the 550 C data as "nearest" and states the gap."}'
+)
+
+
+def test_a_rationale_with_an_unescaped_quote_is_still_scored():
+    import json as _json
+
+    with pytest.raises(_json.JSONDecodeError):
+        _json.loads(BROKEN)
+
+    verdict = judge.parse_verdict(BROKEN, has_notes=True)
+
+    assert (verdict["groundedness"], verdict["completeness"], verdict["reference_agreement"]) == (
+        5, 3, 2
+    )
+    assert verdict["rationale"] == 'It labels the 550 C data as "nearest" and states the gap.'
+
+
+def test_an_unusable_reply_is_retried_once():
+    complete = _Sequence("not json at all", _verdict())
+
+    fields = asyncio.run(judge.judge_result(RESULT, UQ_SPEC, complete))
+
+    assert complete.calls == 2 and fields["judge_completeness"] == 4
+
+
+def test_two_unusable_replies_leave_the_question_unjudged():
+    complete = _Sequence("nope", RuntimeError("down"))
+
+    fields = asyncio.run(judge.judge_result(RESULT, UQ_SPEC, complete))
+
+    assert complete.calls == judge.JUDGE_ATTEMPTS and list(fields) == ["judge_error"]
+
+
+def test_an_unjudged_question_does_not_pass():
+    record = {"status_match": True, "provenance_ok": True, "citation_link_rate": 1.0,
+              "source_hit_rate": 1.0, "fact_match": 1.0,
+              "judge_error": "judge reply is not valid JSON"}
+
+    assert render.failures(record) == ["not judged"]
+    explained = dict(render.explained_failures(record))
+    assert "could not be scored" in explained["not judged"]
+    assert "rerun this question with --id" in explained["not judged"]
+
+
+def test_the_judge_is_told_to_escape_quotes():
+    text = " ".join(judge._PROMPT.template.split())
+
+    assert 'write quotation marks as \\" or use single quotes' in text

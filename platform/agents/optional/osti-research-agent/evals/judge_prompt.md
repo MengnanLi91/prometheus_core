@@ -62,5 +62,6 @@ Give three scores, each an integer from 1 to 5:
   that is guidance for you, not a fact the answer should contain. Use null when
   the reviewer notes are "none".
 
-Reply with only this JSON object and nothing else:
+Reply with only this JSON object and nothing else. It must be valid JSON:
+inside the rationale, write quotation marks as \" or use single quotes.
 {"groundedness": <1-5>, "completeness": <1-5>, "reference_agreement": <1-5 or null>, "rationale": "<one or two sentences: the main problem, or why it is good>"}
