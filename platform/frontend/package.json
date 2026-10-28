@@ -19,6 +19,7 @@
     "@tanstack/react-table": "^8.21.3",
     "@thatopen/components": "^3.4.0",
     "@thatopen/fragments": "^3.4.0",
+    "@xyflow/react": "12.12.0",
     "daisyui": "^5.5.19",
     "highlight.js": "^11.11.0",
     "lucide-react": "^0.292.0",

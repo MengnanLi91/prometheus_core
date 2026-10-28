@@ -86,9 +86,9 @@ export function WorkflowTemplateCard({ template, selected = false, onSelect }: W
         </div>
 
         {selected ? (
-          <Button label="Selected" variant="primary" size="xs" wide onClick={onSelect} />
+          <Button label="Selected" variant="primary" size="sm" wide onClick={onSelect} />
         ) : (
-          <Button label="Select Template" outline size="xs" wide onClick={onSelect} />
+          <Button label="Select Template" outline size="sm" wide onClick={onSelect} />
         )}
       </div>
     </article>
