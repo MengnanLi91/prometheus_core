@@ -1,0 +1,64 @@
+name: Bug Report
+description: Report a bug that prevents Prometheus from working correctly
+labels: ["bug"]
+
+body:
+- type: markdown
+  attributes:
+    value: >
+      #### Before submitting a bug, please check that it hasn't already been reported by searching [the existing and past issues](https://github.com/idaholab/prometheus_core/issues).
+      **Do not report security vulnerabilities here; see [SECURITY.md](https://github.com/idaholab/prometheus_core/blob/devel/SECURITY.md).**
+- type: dropdown
+  attributes:
+    label: Component
+    description: Which part of the repository is affected?
+    multiple: true
+    options:
+      - platform (backend)
+      - platform (frontend)
+      - platform (agents / orchestrator)
+      - sdk (prometheus_api)
+      - agent-template
+      - other / not sure
+  validations:
+    required: true
+- type: textarea
+  attributes:
+    label: Bug Description
+    description: |
+      A clear and concise description of the problem, including what you expected to happen (a missing feature is not a bug).
+  validations:
+    required: true
+- type: textarea
+  attributes:
+    label: Steps to Reproduce
+    description: |
+      Steps to reproduce the behavior: commands run, configuration, requests sent, etc.
+  validations:
+    required: true
+- type: input
+  attributes:
+    label: Version
+    description: Release version or commit hash (`git rev-parse --short HEAD`).
+  validations:
+    required: true
+- type: textarea
+  attributes:
+    label: Impact
+    description: |
+      Does this prevent you from getting your work done, or is it more of an annoyance?
+  validations:
+    required: true
+- type: textarea
+  attributes:
+    label: "[Optional] Logs and Environment"
+    description: |
+      Relevant logs (e.g. `make logs SERVICE=<name>`), OS, Docker and Python versions.
+      **Remove any API keys, tokens, or other secrets before pasting.**
+    render: shell
+  validations:
+    required: false
+- type: markdown
+  attributes:
+    value: >
+      Thanks for contributing!
