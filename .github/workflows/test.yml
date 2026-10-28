@@ -561,6 +561,7 @@ jobs:
       LITELLM_LOCAL_PORT: "9977"
       LITELLM_MASTER_KEY: placeholder
       LLM_API_KEY: placeholder
+      LLM_CONFIG_PROFILE: placeholder
       PROMETHEUS_API_BASE_IMAGE_HASH: placeholder
       REDIS_PASSWORD: placeholder
     steps:
