@@ -80,8 +80,9 @@ def test_osti_optional_compose_preserves_platform_contract(project_root):
         "PROMETHEUS_API_BASE_IMAGE_REPO=${PROMETHEUS_API_BASE_IMAGE_REPO:-containers.github.inl.gov/genesis/prometheus_api}",
         "PROMETHEUS_API_BASE_IMAGE_HASH=${PROMETHEUS_API_BASE_IMAGE_HASH}",
     ]
+    # Agents register through the backend, not LiteLLM (see #195).
     assert service["depends_on"] == {
-        "litellm": {"condition": "service_healthy"},
+        "backend": {"condition": "service_healthy"},
         "redis": {"condition": "service_started"},
     }
 
