@@ -17,7 +17,7 @@ services:
       AGENT_PORT: 8000
       EXTERNAL_AGENT_URL: http://thread-pattern-agent:8000
       AGENT_SECRET: ${AGENT_SECRET}
-      REGISTRY_URL: ${REGISTRY_URL:-}
+      REGISTRY_URL: ${REGISTRY_URL:-http://backend:8000}
       # The SDK sends this as its registry token; the backend registry checks AGENT_SECRET.
       LITELLM_MASTER_KEY: ${AGENT_SECRET}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379}
