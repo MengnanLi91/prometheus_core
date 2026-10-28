@@ -53,6 +53,10 @@ class AgentConfig(BaseModel):
     workdir: Path = Path("/tmp/research_agent")
     total_budget_s: int = 900
     max_papers_analyzed: int = 5
+    # Unique queries per search tool per run. When they run out the agent can
+    # only read results it already has, so too few ends a run early.
+    max_osti_searches: int = Field(default=5, ge=1)
+    max_scholarly_searches: int = Field(default=4, ge=1)
     analyzer_model_call_limit: int = Field(default=8, ge=1)
     analyzer_tool_call_limit: int = Field(default=12, ge=1)
     # The verifier must read paper.md and every artifact a finding cites, so
@@ -132,6 +136,8 @@ class AgentConfig(BaseModel):
             redis_password=os.getenv("REDIS_PASSWORD"),
             total_budget_s=int(os.getenv("TOTAL_BUDGET_S", "900")),
             max_papers_analyzed=int(os.getenv("MAX_PAPERS_ANALYZED", "5")),
+            max_osti_searches=int(os.getenv("MAX_OSTI_SEARCHES", "5")),
+            max_scholarly_searches=int(os.getenv("MAX_SCHOLARLY_SEARCHES", "4")),
             engine=os.getenv("AGENT_ENGINE", "deepagent"),
             analyzer_model_call_limit=int(os.getenv("ANALYZER_MODEL_CALL_LIMIT", "8")),
             analyzer_tool_call_limit=int(os.getenv("ANALYZER_TOOL_CALL_LIMIT", "12")),

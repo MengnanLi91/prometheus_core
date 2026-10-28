@@ -176,3 +176,57 @@ def test_prompts_tell_each_role_about_nearest_findings():
     assert 'A `match: "nearest"` candidate is not wrong' in verifier
     assert "DON'T GIVE UP EARLY" in orchestrator
     assert "does not use up the paper budget" in orchestrator
+
+
+# --- search limits ---------------------------------------------------------
+
+
+def test_search_limits_default_higher_and_come_from_the_environment(monkeypatch):
+    monkeypatch.delenv("MAX_OSTI_SEARCHES", raising=False)
+    monkeypatch.delenv("MAX_SCHOLARLY_SEARCHES", raising=False)
+    default = AgentConfig.from_env()
+    monkeypatch.setenv("MAX_OSTI_SEARCHES", "8")
+    monkeypatch.setenv("MAX_SCHOLARLY_SEARCHES", "6")
+    tuned = AgentConfig.from_env()
+
+    assert (default.max_osti_searches, default.max_scholarly_searches) == (5, 4)
+    assert (tuned.max_osti_searches, tuned.max_scholarly_searches) == (8, 6)
+
+
+def test_search_tools_use_the_configured_limits(monkeypatch):
+    from research_agent import osti_client
+    from research_agent.tools import RunContext
+    from research_agent.tools.osti import build_osti_tools
+
+    monkeypatch.setattr(osti_client, "search_osti", lambda query, k: [])
+    ctx = RunContext(
+        config=AgentConfig(litellm_base_url="http://unused", max_osti_searches=2),
+        complete=None,
+    )
+    search = next(t for t in build_osti_tools(ctx) if t.name == "search_osti")
+
+    for query in ("a", "b"):
+        asyncio.run(search.ainvoke({"query": query}))
+    third = json.loads(asyncio.run(search.ainvoke({"query": "c"})))
+
+    assert "search limit reached (2)" in third["error"]
+
+
+def test_orchestrator_states_the_limits_and_keeps_reading_after_searches_run_out():
+    config = AgentConfig(
+        litellm_base_url="http://unused", max_osti_searches=7, max_scholarly_searches=3
+    )
+    orchestrator = " ".join(prompts.render_orchestrator_prompt(config).split())
+
+    assert "You have 7 OSTI and 3 scholarly searches per run" in orchestrator
+    assert "Running out of searches is not a reason to stop" in orchestrator
+    assert "up to 3 times" not in orchestrator
+
+
+def test_analyzer_returns_the_closest_condition_however_far():
+    analyzer = " ".join(
+        prompts.render_analyzer_prompt(AgentConfig(litellm_base_url="http://unused")).split()
+    )
+
+    assert "however far its conditions are from those asked" in analyzer
+    assert "never apply a fitted equation outside the range" in analyzer

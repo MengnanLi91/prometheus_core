@@ -26,6 +26,8 @@ defaults.
 | `AGENT_ENGINE` | `deepagent` | engine selection (above) |
 | `TOTAL_BUDGET_S` | `900` | hard wall-clock ceiling; runner cancels at `budget-30s` and salvages `timeout_partial` |
 | `MAX_PAPERS_ANALYZED` | `5` | download/parse budget; tools refuse past it |
+| `MAX_OSTI_SEARCHES` | `5` | unique OSTI queries per run |
+| `MAX_SCHOLARLY_SEARCHES` | `4` | unique OpenAlex/arXiv queries per run |
 | `ANALYZER_MODEL_CALL_LIMIT` | `8` | maximum model calls per paper-analyzer run |
 | `ANALYZER_TOOL_CALL_LIMIT` | `12` | maximum filesystem-tool calls per paper-analyzer run |
 | `VERIFIER_MODEL_CALL_LIMIT` | `10` | maximum model calls per paper-verifier run; raise it if logs show "Verifier model-call limit reached" |

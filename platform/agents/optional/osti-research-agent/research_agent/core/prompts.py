@@ -80,6 +80,8 @@ def render_orchestrator_prompt(config: AgentConfig) -> str:
     budget_min = max(round(config.total_budget_s / 60), 1)
     return template.format(
         max_papers=config.max_papers_analyzed,
+        max_osti_searches=config.max_osti_searches,
+        max_scholarly_searches=config.max_scholarly_searches,
         budget_min=budget_min,
         parse_min="1-3",
     )

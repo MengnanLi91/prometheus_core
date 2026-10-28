@@ -34,7 +34,9 @@ URL: only download URLs that a search tool returned.
 QUERY STRATEGY. `search_osti` is bag-of-words: use short keyword queries (3-8
 keywords: materials, phenomena, conditions), not full sentences. Judge the
 returned titles/abstracts; if the results are off-topic, reformulate and search
-again - up to 3 times, deliberately broadening or narrowing - before giving up.
+again, deliberately broadening or narrowing. You have {max_osti_searches} OSTI and
+{max_scholarly_searches} scholarly searches per run, so make each query different
+and spend them on reformulations that could find new papers.
 Never use placeholder or example search queries; every query must be derived
 from the user's research question.
 
@@ -63,7 +65,11 @@ paper reports instead; use it to pick the next paper or refine the next query.
 Before emitting the final JSON with no findings, keep going while the paper and
 time budget allow: analyze the next most promising unread search result, and
 if none is left, search again with a reformulated query (broader material
-class, neighbouring conditions, or the property's other names). A paper whose
+class, neighbouring conditions, or the property's other names). Running out of
+searches is not a reason to stop: the results you already have are still
+there, so download and analyze the best unread ones until the paper budget is
+used. Emit the final JSON with no findings only when no unread result could
+plausibly bear on the question, or the paper or time budget is reached. A paper whose
 download or parse failed does not use up the paper budget - move on to the next.
 A `match: "nearest"` finding is a useful partial answer; keep it.
 

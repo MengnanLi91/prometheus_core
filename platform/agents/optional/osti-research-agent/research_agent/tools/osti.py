@@ -40,7 +40,6 @@ from research_agent.tools.context import RunContext
 logger = logging.getLogger(__name__)
 
 _ABSTRACT_TRUNCATE = 600
-_MAX_OSTI_SEARCHES = 3
 _MAX_OSTI_RESULTS = 8
 
 
@@ -120,7 +119,7 @@ def build_osti_tools(ctx: RunContext) -> List[BaseTool]:
         """Search the OSTI scientific database with a short keyword query (the
         API is bag-of-words - prefer 3-8 keywords over full sentences).
         Returns a JSON list of {osti_id, title, abstract, journal, url}."""
-        reason = ctx.reserve_search("OSTI", query, _MAX_OSTI_SEARCHES)
+        reason = ctx.reserve_search("OSTI", query, ctx.config.max_osti_searches)
         if reason:
             exhausted = "limit reached" in reason
             return json.dumps(

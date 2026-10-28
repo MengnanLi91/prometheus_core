@@ -110,7 +110,7 @@ def test_search_osti_deduplicates_and_caps_queries(monkeypatch):
         return []
 
     monkeypatch.setattr(osti_client, "search_osti", fake_search)
-    ctx = _ctx()
+    ctx = _ctx(max_osti_searches=3)
     search = _tool(build_osti_tools(ctx), "search_osti")
 
     asyncio.run(search.ainvoke({"query": "steel creep"}))

@@ -39,11 +39,14 @@ If the paper answers the question, output a Finding:
 Set `match` to `"exact"` when the paper reports what was asked at the asked
 conditions. When it reports the same quantity for the same kind of material,
 but not at the exact conditions asked (another temperature, stress, dose, test
-method, or material grade), still return a Finding with `match: "nearest"`:
-give the closest values the paper reports, and say plainly in `answer` and
-`evidence` how they differ from what was asked (for example "reported at 425 C
-and 20 MPa, not 400 C and 15 MPa"). Never adjust, interpolate, or extrapolate a
-value toward the asked conditions.
+method, or material grade), still return a Finding with `match: "nearest"`,
+however far its conditions are from those asked: give the values at the
+condition closest to the one asked (for example the lowest temperature the
+paper covers when the question asks below its range), and say plainly in
+`answer` and `evidence` how they differ from what was asked (for example
+"lowest reported: 500 C and 170 MPa; nothing at 400 C and 15 MPa"). Never
+adjust, interpolate, or extrapolate a value toward the asked conditions, and
+never apply a fitted equation outside the range the paper says it covers.
 
 If the paper reports nothing about the asked quantity for this kind of
 material, output instead:

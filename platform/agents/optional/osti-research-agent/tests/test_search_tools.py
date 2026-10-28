@@ -108,7 +108,7 @@ def test_search_scholarly_deduplicates_and_caps_queries(monkeypatch):
         return []
 
     monkeypatch.setattr(search_tools.scholarly, "search_scholarly", fake_scholarly)
-    ctx = _ctx()
+    ctx = _ctx(max_scholarly_searches=2)
     scholarly = _tool(build_search_tools(ctx), "search_scholarly")
 
     asyncio.run(scholarly.ainvoke({"query": "steel creep"}))

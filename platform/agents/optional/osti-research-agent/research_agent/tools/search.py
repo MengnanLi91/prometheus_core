@@ -39,7 +39,6 @@ from research_agent.web_search import get_web_provider
 logger = logging.getLogger(__name__)
 
 _ABSTRACT_TRUNCATE = 600
-_MAX_SCHOLARLY_SEARCHES = 2
 _MAX_SCHOLARLY_RESULTS = 6
 
 
@@ -62,7 +61,7 @@ def build_search_tools(ctx: RunContext) -> List[BaseTool]:
         reason = ctx.reserve_search(
             "scholarly",
             query,
-            _MAX_SCHOLARLY_SEARCHES,
+            ctx.config.max_scholarly_searches,
         )
         if reason:
             exhausted = "limit reached" in reason
