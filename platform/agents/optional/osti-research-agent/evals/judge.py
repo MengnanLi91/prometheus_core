@@ -61,6 +61,7 @@ def _findings_text(result: Dict[str, Any]) -> str:
     findings = [
         {
             "source_id": f.get("source_id"),
+            "match": f.get("match") or "exact",
             "answer": f.get("answer"),
             "evidence": f.get("evidence"),
         }

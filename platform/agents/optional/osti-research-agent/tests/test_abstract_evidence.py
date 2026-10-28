@@ -332,7 +332,7 @@ def test_the_judge_is_told_how_to_score_labelled_estimates():
     text = " ".join(judge_prompt.read_text().split())
 
     assert "An estimate presented as a reported or measured value is unsupported" in text
-    assert "score it 4 when the estimate is sound" in text
+    assert "4 = no exact finding, but a clearly labelled best-effort estimate" in text
 
 
 def test_orchestrator_allows_estimates_only_through_the_tool():

@@ -188,3 +188,24 @@ def test_score_result_is_unchanged_by_the_judge_fields():
     record = scoring.score_result({**RESULT, "_engine": "deepagent"}, UQ_SPEC)
 
     assert not any(k.startswith("judge_") for k in record)
+
+
+def test_judge_sees_each_findings_match_label():
+    result = {**RESULT, "findings": [
+        {"source_id": "1", "match": "nearest", "answer": "a", "evidence": "e"},
+        {"source_id": "2", "answer": "b", "evidence": "f"},  # older results: exact
+    ]}
+
+    prompt = judge.build_prompt(result, UQ_SPEC)
+
+    assert '"match": "nearest"' in prompt and '"match": "exact"' in prompt
+
+
+def test_completeness_has_an_explicit_scale_for_nearest_data():
+    text = " ".join(judge._PROMPT.template.split())
+
+    assert "5 = the asked value at the asked conditions, from an \"exact\" finding" in text
+    assert "3 = no exact finding or sound estimate, but correctly labelled \"nearest\"" in text
+    assert "2 = only nearest data that is loosely related" in text
+    # Stating the gap is required, not rewarded on its own.
+    assert "not a reason for a higher score" in text

@@ -17,6 +17,9 @@ $answer
 $findings
 </findings>
 The findings are the verified per-paper evidence the answer was built from.
+Each has a `match`: "exact" when the paper reports the asked quantity at the
+asked conditions, "nearest" when it reports it only at other conditions
+(another temperature, stress, dose, test method or grade).
 
 <reviewer_notes>
 $notes
@@ -35,13 +38,22 @@ Give three scores, each an integer from 1 to 5:
   claim is supported by its quote, and an estimate is grounded when its inputs
   are cited and its method and assumptions are stated. An estimate presented
   as a reported or measured value is unsupported.
-- completeness: the answer addresses everything the question asks, or says
-  plainly what the sources do not report. When the reviewer notes say the right
-  behavior is to decline, ask for clarification, or return no results, doing
-  that scores 5. When the sources do not report the asked value, a clearly
-  labelled estimate with cited inputs, a stated method and a range addresses
-  the question better than reporting nothing: score it 4 when the estimate is
-  sound, lower when its method or assumptions are weak.
+- completeness: how much of what the question asks the answer delivers.
+  Score by the best thing it delivers:
+  5 = the asked value at the asked conditions, from an "exact" finding.
+  4 = no exact finding, but a clearly labelled best-effort estimate with cited
+      inputs, a stated method and a range, and a sound method for the case.
+  3 = no exact finding or sound estimate, but correctly labelled "nearest"
+      data on the same phenomenon and material, with the conditions it was
+      reported at and the gap to the asked conditions stated plainly.
+  2 = only nearest data that is loosely related (a different mechanism,
+      material class or property), or an estimate whose method is weak.
+  1 = nothing that addresses the question, or values presented as answering
+      it that do not.
+  Saying plainly that the sources do not report the asked value is required
+  at 2-4, not a reason for a higher score. Exception: when the reviewer notes
+  say the right behavior is to decline, ask for clarification, or return no
+  results, doing that scores 5.
 - reference_agreement: only when reviewer notes are given. The notes hold
   reference values from a literature review and/or the expected behavior.
   5 = consistent with them and covers their key values; 3 = partly consistent
