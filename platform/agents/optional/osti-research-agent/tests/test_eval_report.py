@@ -90,7 +90,8 @@ def test_run_writes_json_and_markdown_and_prints_a_summary(tmp_path, fake_engine
     out = capsys.readouterr().out
     assert "OSTI evaluation  1/3 passed" in out
     assert "Per-engine summary" in out and "Failed (2)" in out
-    assert "status 'completed' not the expected one; completed with no" in out
+    assert "status 'completed' not the expected one: expected 'no_results'" in out
+    assert "completed with no sources: the answer reports results but cites no" in out
     assert "citation_link_rate 0.00" in out
 
 
@@ -227,3 +228,65 @@ def test_ctrl_c_writes_a_partial_report_and_exits_without_a_traceback(tmp_path):
     partial = json.loads(report_path.read_text())
     assert partial["complete"] is False
     assert [r["id"] for r in partial["records"]] == ["ss316-creep"]
+
+
+def _failed_record(**overrides):
+    record = {"id": "q", "engine": "deepagent", "status": "no_results",
+              "status_match": True, "provenance_ok": True, "citation_link_rate": 1.0,
+              "source_hit_rate": 1.0, "fact_match": 1.0}
+    record.update(overrides)
+    return record
+
+
+def test_each_failure_gets_a_specific_explanation():
+    record = _failed_record(
+        status_match=False, expect_status="completed",
+        fact_match=0.5, missing_facts=["316", "MPa"],
+        source_hit_rate=0.0, missing_sources=["706175"],
+        judge_completeness=2, judge_groundedness=5,
+        judge_rationale="Gives only 550 C data for a 400 C question.",
+    )
+
+    explained = dict(render.explained_failures(record))
+
+    assert explained["status 'no_results' not the expected one"] == (
+        "expected 'completed', the agent returned 'no_results'; it found no verified evidence"
+    )
+    assert explained["fact_match 0.50"] == 'expected text not in the answer: "316", "MPa"'
+    assert explained["source_hit_rate 0.00"] == 'expected sources not cited: "706175"'
+    assert explained["judge completeness 2/5"] == "Gives only 550 C data for a 400 C question."
+
+
+def test_the_judge_rationale_is_shown_once_for_several_low_scores():
+    record = _failed_record(
+        judge_completeness=2, judge_reference_agreement=2, judge_rationale="Why it failed.",
+    )
+
+    text = render._explanation_text(record)
+
+    assert text.count("Why it failed.") == 1
+    assert "judge completeness 2/5: Why it failed." in text
+    assert "judge reference agreement 2/5" in text
+
+
+def test_markdown_failures_table_shows_the_explanations(tmp_path, fake_engine):
+    _main(tmp_path)
+    markdown = (tmp_path / "r" / "report.md").read_text()
+    failures = markdown.split("## Failures")[1].split("## All questions")[0]
+
+    assert "expected 'no_results', the agent returned 'completed'" in failures
+    assert "the answer reports results but cites no source" in failures
+
+
+def test_scoring_records_what_was_missing():
+    from evals import scoring
+
+    record = scoring.score_result(
+        {"status": "completed", "answer": "SS316 creeps", "provenance": [{"source": "OSTI #1"}]},
+        {"id": "q", "expected_facts": ["316", "MPa"], "expected_source_ids": ["1", "2"],
+         "expect_status": "completed"},
+    )
+
+    assert record["missing_facts"] == ["MPa"]
+    assert record["missing_sources"] == ["2"]
+    assert record["expect_status"] == "completed"

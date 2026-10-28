@@ -129,16 +129,33 @@ def failures_table(report: Dict[str, Any], *, max_failures: int = 20) -> Optiona
     )
     table.add_column("engine", no_wrap=True)
     table.add_column("question", style="bold", no_wrap=True)
-    table.add_column("why", style="red", ratio=1)
+    table.add_column("why", ratio=1)
     for record in failed[:max_failures]:
         table.add_row(
             str(record.get("engine")),
             str(record.get("id")),
-            "; ".join(render.failures(record)),
+            _why(record),
         )
     if len(failed) > max_failures:
         table.caption = f"... and {len(failed) - max_failures} more in report.md"
     return table
+
+
+def _why(record: Dict[str, Any]) -> Text:
+    """Each failure reason in red, with its explanation after it in the
+    default color, one reason per line."""
+    text, judge_shown = Text(), False
+    for index, (reason, detail) in enumerate(render.explained_failures(record)):
+        if index:
+            text.append("\n")
+        text.append(reason, style="red")
+        if reason.startswith("judge "):
+            if judge_shown:
+                continue
+            judge_shown = True
+        if detail:
+            text.append(f": {detail}")
+    return text
 
 
 def print_summary(console: Console, report: Dict[str, Any]) -> None:

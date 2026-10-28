@@ -18,7 +18,7 @@ writes, so they're unit-tested offline and can re-render an old report
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 # A question is a failure when any of these is false or under 1.0, or when a
 # judge score is under JUDGE_PASS_SCORE. Kept equal to evals.judge.PASS_SCORE;
@@ -49,6 +49,69 @@ def failures(record: Dict[str, Any]) -> List[str]:
         if isinstance(value, int) and value < JUDGE_PASS_SCORE:
             reasons.append(f"judge {label} {value}/5")
     return reasons
+
+
+def _quoted(values: List[Any]) -> str:
+    return ", ".join(f'"{v}"' for v in values)
+
+
+def explained_failures(record: Dict[str, Any]) -> List[Tuple[str, str]]:
+    """Each failure as ``(short reason, what it means for this question)``.
+
+    The explanation uses what the record knows: the expected status, the
+    facts or sources missing from the answer, and the judge's own rationale
+    for a low judge score."""
+    reasons = []
+    for reason in failures(record):
+        if reason.startswith("status "):
+            expected = record.get("expect_status")
+            detail = (
+                f"expected {expected!r}, the agent returned {record.get('status')!r}"
+                if expected
+                else "the status did not match the question's expectation"
+            )
+            if record.get("status") == "no_results":
+                detail += "; it found no verified evidence"
+        elif reason == "completed with no sources":
+            detail = "the answer reports results but cites no source"
+        elif reason.startswith("citation_link_rate"):
+            detail = "some \"Paper N\" citations in the answer are not links to a source"
+        elif reason.startswith("source_hit_rate"):
+            missing = record.get("missing_sources") or []
+            detail = (
+                f"expected sources not cited: {_quoted(missing)}"
+                if missing
+                else "some expected sources are not in the answer's provenance"
+            )
+        elif reason.startswith("fact_match"):
+            missing = record.get("missing_facts") or []
+            detail = (
+                f"expected text not in the answer: {_quoted(missing)}"
+                if missing
+                else "some expected facts are not in the answer"
+            )
+        elif reason.startswith("judge "):
+            detail = str(record.get("judge_rationale") or "").strip() or (
+                "the judge gave no rationale"
+            )
+        else:
+            detail = ""
+        reasons.append((reason, detail))
+    return reasons
+
+
+def _explanation_text(record: Dict[str, Any]) -> str:
+    """One cell: each reason with its explanation; the judge's rationale is
+    shown once even when several judge scores failed."""
+    parts, judge_shown = [], False
+    for reason, detail in explained_failures(record):
+        if reason.startswith("judge "):
+            if judge_shown:
+                parts.append(f"{reason}")
+                continue
+            judge_shown = True
+        parts.append(f"{reason}: {detail}" if detail else reason)
+    return "; ".join(parts)
 
 
 def _median(values: List[Any]) -> Optional[float]:
@@ -207,7 +270,7 @@ def markdown_report(
         sections.append(
             _md_table(
                 ["engine", "question", "why"],
-                [[r.get("engine"), qid_cell(r), "; ".join(failures(r))] for r in failed],
+                [[r.get("engine"), qid_cell(r), _explanation_text(r)] for r in failed],
             )
         )
     else:

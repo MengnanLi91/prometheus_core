@@ -107,6 +107,17 @@ def score_result(result: Dict[str, Any], spec: Dict[str, Any]) -> Dict[str, Any]
         "facts_stored": result.get("facts_stored", 0),
         "cached": result.get("cached", False),
         "wall_s": result.get("_wall_s"),
+        # What was expected and what was missed, so the report can explain a
+        # failure without the question file.
+        "expect_status": spec.get("expect_status"),
+        "missing_facts": [
+            f for f in spec.get("expected_facts") or []
+            if str(f).lower() not in (answer or "").lower()
+        ],
+        "missing_sources": [
+            s for s in spec.get("expected_source_ids") or []
+            if not any(str(s).lower() in b for b in _provenance_blobs(provenance))
+        ],
     }
 
 
