@@ -135,16 +135,50 @@ def _write_pdf(dest_path: str, content: bytes) -> bool:
 
 
 def search_osti(search_query: str, max_results: int = 15) -> List[Dict[str, Any]]:
-    """Search OSTI API and retrieve abstracts."""
-    base_url = "https://www.osti.gov/api/v1/records"
-    encoded_query = urllib.parse.quote_plus(search_query)
+    """Search OSTI API and retrieve abstracts.
 
-    results = []
+    OSTI ranks q= matches loosely (recent, off-topic records come first),
+    while title= matches stay on topic. So title= is tried first, then
+    again without words that contain digits ("800K" makes title= match
+    nothing), and q= only tops up what the title searches didn't fill.
+    """
+    plain_query = " ".join(
+        w for w in search_query.split() if not any(c.isdigit() for c in w)
+    )
+    attempts = [("title", search_query)]
+    if plain_query and plain_query != search_query:
+        attempts.append(("title", plain_query))
+    attempts.append(("q", search_query))
+
+    results: List[Dict[str, Any]] = []
+    seen_ids: set = set()
+    for field, text in attempts:
+        if len(results) >= max_results:
+            break
+        _search_field(field, text, max_results, results, seen_ids)
+
+    logger.info(f"[OSTI API] Total results found: {len(results)}")
+
+    return results
+
+
+def _search_field(
+    field: str,
+    text: str,
+    max_results: int,
+    results: List[Dict[str, Any]],
+    seen_ids: set,
+) -> None:
+    """Page through one OSTI search (``field=text``), appending new records to
+    ``results`` until it holds ``max_results``. A failed request ends only this
+    search, keeping what was found."""
+    base_url = "https://www.osti.gov/api/v1/records"
+    encoded_query = urllib.parse.quote_plus(text)
     page = 0  # OSTI uses 0-based pagination
 
     while len(results) < max_results:
         try:
-            full_url = f"{base_url}?q={encoded_query}&page={page}"
+            full_url = f"{base_url}?{field}={encoded_query}&page={page}"
             logger.info(f"[OSTI API] Requesting: {full_url}")
 
             # The API negotiates its format: with requests' default "Accept: */*"
@@ -181,13 +215,18 @@ def search_osti(search_query: str, max_results: int = 15) -> List[Dict[str, Any]
                 break
 
             if not data:
-                logger.info(f"[OSTI API] No more results on page {page}")
+                logger.info(f"[OSTI API] No more {field}= results on page {page}")
                 break
 
-            logger.info(f"[OSTI API] Page {page}: Got {len(data)} records")
+            logger.info(f"[OSTI API] {field}= page {page}: Got {len(data)} records")
 
             for result in data:
-                if "description" in result and "osti_id" in result:
+                if (
+                    "description" in result
+                    and "osti_id" in result
+                    and result["osti_id"] not in seen_ids
+                ):
+                    seen_ids.add(result["osti_id"])
                     results.append(
                         {
                             "osti_id": result["osti_id"],
@@ -217,10 +256,6 @@ def search_osti(search_query: str, max_results: int = 15) -> List[Dict[str, Any]
         except Exception as e:
             logger.error(f"[OSTI API] Error searching OSTI: {e}", exc_info=True)
             break
-
-    logger.info(f"[OSTI API] Total results found: {len(results)}")
-
-    return results
 
 
 def download_paper(osti_id: str, cache: Optional[PdfCache] = None) -> Optional[str]:
