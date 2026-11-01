@@ -104,7 +104,7 @@ def test_search_stops_once_max_results_reached_within_a_page():
 
 def test_search_keeps_results_found_before_a_request_error():
     page = json.dumps([{"osti_id": "1", "title": "T", "description": "D"}])
-    side_effect = [_resp(text=page), RuntimeError("connection reset")]
+    side_effect = [_resp(text=page), RuntimeError("connection reset"), _resp()]
     with patch.object(osti_client.requests, "get", side_effect=side_effect):
         results = osti_client.search_osti("q", max_results=10)
 
