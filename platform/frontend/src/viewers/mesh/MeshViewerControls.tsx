@@ -75,6 +75,8 @@ type Props = {
   onScalarRangeChange: (range: [number, number]) => void;
 
   disabled?: boolean;
+  /** Start with the controls box open (default) or collapsed to its button. */
+  defaultOpen?: boolean;
 };
 
 const MeshViewerControls: React.FC<Props> = ({
@@ -83,8 +85,9 @@ const MeshViewerControls: React.FC<Props> = ({
   colorPreset, onColorPresetChange,
   scalarRange, onScalarRangeChange,
   disabled = false,
+  defaultOpen = true,
 }) => {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(defaultOpen);
   const [playbackOpen, setPlaybackOpen] = useState(true);
   const [appearanceOpen, setAppearanceOpen] = useState(true);
 

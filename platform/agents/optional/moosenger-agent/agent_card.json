@@ -1,0 +1,90 @@
+{
+  "name": "MOOSEnger",
+  "description": "Simulation-aware assistant for the MOOSE multiphysics framework: answers MOOSE questions, generates and validates HIT (.i) input files with a check/repair loop, and runs MOOSE simulations returning the verified input and solver logs.",
+  "version": "0.3.0",
+  "capabilities": {
+    "streaming": false,
+    "pushNotifications": false
+  },
+  "skills": [
+    {
+      "id": "moose_general_qa",
+      "name": "General MOOSE Q&A",
+      "description": "Answer questions about the MOOSE framework: objects, parameters, HIT syntax, modules (heat transfer, solid mechanics, Navier-Stokes, phase field, porous flow, reactor), and modeling workflows.",
+      "usage_notes": "Use for conceptual or documentation questions that do not need a new input file. Returns a plain-text answer in 'answer'. Call it directly with the user's question; do not ask the user follow-up questions first. Do not use when the user wants a runnable .i file (use moose_input_generation) or wants a case executed (use moose_input_execution).",
+      "tags": ["moose", "multiphysics", "finite-element", "documentation", "qa"],
+      "requires_approval": false,
+      "expected_duration_seconds": 45,
+      "output_format": "JSON with keys: status, answer, response",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "description": "The MOOSE question, in natural language.",
+            "x-prometheus-source": "user_message"
+          }
+        },
+        "required": ["message"]
+      }
+    },
+    {
+      "id": "moose_input_generation",
+      "name": "MOOSE Input File Generation",
+      "description": "Generate or modify a MOOSE HIT input file (.i) from a natural-language description of the physics, geometry, boundary conditions, materials and solver settings. MOOSEnger retrieves MOOSE docs/examples, drafts the input, and iterates with MOOSE-aware syntax checks and --check-input until it validates.",
+      "usage_notes": "Use when the user wants a new or edited MOOSE input file but has not asked to run it. Call it as soon as the user asks for an input, without asking clarifying questions or using ask_user first: MOOSEnger receives the user's own words, asks for anything missing itself, and shows its plan for the user to approve before writing the input. The result contains 'outputs' (filename -> text) and the verified primary file in 'primary_output_name'/'primary_output_text'; the .i file is also emitted as an artifact the user can open and download. MOOSEnger may pause with a clarification form when requirements conflict or cannot be satisfied.",
+      "tags": ["moose", "input-file", "hit", "generation", "validation", "simulation-setup"],
+      "requires_approval": false,
+      "expected_duration_seconds": 240,
+      "output_format": "JSON with keys: status, primary_output_name, primary_output_text, outputs, response, assurance",
+      "provides": [
+        {
+          "type": "context_map",
+          "context_key": "moose_input_files",
+          "item_key_path": "primary_output_name",
+          "item_value_path": "primary_output_text"
+        }
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "description": "Natural-language description of the MOOSE simulation to generate or modify, including all stated requirements.",
+            "x-prometheus-source": "user_message"
+          }
+        },
+        "required": ["message"]
+      }
+    },
+    {
+      "id": "moose_input_execution",
+      "name": "MOOSE Input File Execution",
+      "description": "Generate (if needed), validate and execute a MOOSE input file, then return the verified input plus the solver stdout/stderr logs. Runtime failures are diagnosed and repaired in a bounded loop before giving up.",
+      "usage_notes": "Use when the user explicitly asks to run, execute or simulate a MOOSE case (e.g. 'run it', 'execute current.i', 'generate and run'). Call it directly, without asking clarifying questions first: MOOSEnger receives the user's own words, asks for anything missing itself, and shows its plan for approval. This is a long-running skill: it detaches the turn and results arrive when the run finishes. Requires MOOSE to be available to MOOSEnger (local executable or MCP execution server).",
+      "tags": ["moose", "simulation", "execution", "solver", "long-running"],
+      "requires_approval": false,
+      "expected_duration_seconds": 600,
+      "output_format": "JSON with keys: status, primary_output_name, primary_output_text, outputs, response, assurance; artifacts moose_stdout.log / moose_stderr.log",
+      "provides": [
+        {
+          "type": "context_map",
+          "context_key": "moose_run_primary_output",
+          "item_key_path": "primary_output_name",
+          "item_value_path": "primary_output_text"
+        }
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "description": "Execution request: which input to run (or what to generate first) and any run constraints.",
+            "x-prometheus-source": "user_message"
+          }
+        },
+        "required": ["message"]
+      }
+    }
+  ]
+}

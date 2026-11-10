@@ -1,0 +1,18 @@
+# Bind a MOOSEnger vector database from the host into the MOOSEnger agent.
+#
+# The Makefile adds this file when OPTIONAL_AGENTS=true and
+# MOOSENGER_VECTOR_HOST_DIR is set in platform/.env. It is a separate file
+# because agent compose files may not bind-mount host paths (make test-static),
+# and `make generate` picks up only docker-compose.yml.
+#
+# MOOSENGER_VECTOR_HOST_DIR is a MOOSEnger vector_data/ directory: chroma.sqlite3,
+# its index segment, and the moose_documents/ parent-document store that
+# retrieval reads. It is bound read-write because ChromaDB cannot open a
+# read-only database, and the container's ChromaDB may upgrade it in place. Use
+# a copy rather than the vector_data/ a standalone MOOSEnger is using (README.md).
+services:
+  moosenger-agent:
+    environment:
+      MOOSENGER_VECTOR_DIR: /vector_db
+    volumes:
+      - ${MOOSENGER_VECTOR_HOST_DIR:?set MOOSENGER_VECTOR_HOST_DIR in .env}:/vector_db

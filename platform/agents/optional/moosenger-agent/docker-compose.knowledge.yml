@@ -1,0 +1,22 @@
+# Bind a MOOSEnger knowledge base from the host into the MOOSEnger agent.
+#
+# The Makefile adds this file when OPTIONAL_AGENTS=true and
+# MOOSENGER_KNOWLEDGE_HOST_DIR is set in platform/.env. It is a separate file
+# because agent compose files may not bind-mount host paths (make test-static),
+# and `make generate` picks up only docker-compose.yml.
+#
+# MOOSENGER_KNOWLEDGE_HOST_DIR is the knowledge base that `moosenger knowledge
+# sync` builds (raw/, registry/, compiled/, graph/, state/): the `knowledge.layout`
+# in a standalone .moosenger.yaml. Without one, knowledge.brain_search has only
+# its vector layer: no Object Registry (exact MOOSE objects), compiled pages or
+# link graph. The agent only reads it, so it is bound read-only; rebuild it on
+# the host with `moosenger knowledge sync`.
+#
+# A vector database inside it (vector_data/) cannot be opened read-only; keep
+# that one elsewhere and point MOOSENGER_VECTOR_DIR at it (README.md).
+services:
+  moosenger-agent:
+    environment:
+      MOOSENGER_KNOWLEDGE_DIR: /knowledge
+    volumes:
+      - ${MOOSENGER_KNOWLEDGE_HOST_DIR:?set MOOSENGER_KNOWLEDGE_HOST_DIR in .env}:/knowledge:ro

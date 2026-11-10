@@ -11,3 +11,4 @@
 common/certs/*
 !common/certs/setup.sh
 !common/certs/README.md
+.vscode/settings.json

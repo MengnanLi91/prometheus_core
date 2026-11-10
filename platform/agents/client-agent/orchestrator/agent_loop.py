@@ -87,6 +87,24 @@ ASK_USER_TOOL = "ask_user"
 # Attached by the orchestrator on every invocation; never model-authored.
 ORCHESTRATOR_PARAMS = {"artifacts", "conversation_id"}
 
+#: Input-schema property extension: a skill marks a top-level string field with
+#: ``"x-prometheus-source": "user_message"`` to receive the user's message for the
+#: turn exactly as typed, instead of the orchestrator model's rewording of it.
+VERBATIM_SOURCE_KEY = "x-prometheus-source"
+VERBATIM_USER_MESSAGE = "user_message"
+#: The user's own words for the request in progress: every typed message and
+#: ``ask_user`` answer since the last successful verbatim call. A request often
+#: spans turns ("Navier Stokes module" / "yes" / a form), so the last message
+#: alone ("yes") is not the request.
+USER_REQUEST_PARTS = "user_request_parts"
+_MAX_REQUEST_PARTS = 12
+_MAX_REQUEST_CHARS = 6000
+
+#: The final answer may end with a developer note on its sources (what the model
+#: corrected or added to a skill result). It is cut from what the user sees and
+#: kept on the turn for ``/notes``; see the FINAL ANSWER rules in the prompt.
+_ORCHESTRATOR_NOTE_RE = re.compile(r"<orchestrator_note>(.*?)(?:</orchestrator_note>|\Z)", re.DOTALL | re.IGNORECASE)
+
 _TOOL_NAME_RE = re.compile(r"[^a-zA-Z0-9_-]+")
 _SCHEMA_MAP_KEYS = {"properties", "patternProperties", "$defs", "definitions"}
 
@@ -134,6 +152,19 @@ class LoopOutcome:
     message: str = ""
     questions: List[Dict[str, Any]] = field(default_factory=list)
     plan: Optional[Dict[str, Any]] = None
+    #: The final answer's developer note, never shown to the user.
+    note: str = ""
+
+
+def split_orchestrator_note(text: str) -> Tuple[str, str]:
+    """Split a final answer into (what the user sees, the developer note).
+
+    Every ``<orchestrator_note>`` block is removed, an unclosed one up to the end,
+    and their texts are joined.
+    """
+    notes = [match.group(1).strip() for match in _ORCHESTRATOR_NOTE_RE.finditer(text)]
+    answer = _ORCHESTRATOR_NOTE_RE.sub("", text).strip()
+    return answer, "\n\n".join(note for note in notes if note)
 
 
 ASK_USER_SPEC = ToolSpec(
@@ -219,9 +250,15 @@ def _advertised_parameters(input_schema: Dict[str, Any]) -> Dict[str, Any]:
             else "artifact_id of an existing conversation artifact."
         )
         prop["description"] = f"{prop.get('description', '')} {hint}".strip()
+    # Fields filled with the user's message verbatim are not the model's to write.
+    verbatim = {
+        name
+        for name, prop in (schema.get("properties") or {}).items()
+        if isinstance(prop, dict) and prop.get(VERBATIM_SOURCE_KEY) == VERBATIM_USER_MESSAGE
+    }
     schema = _clean_schema(schema)
     properties = dict(schema.get("properties") or {})
-    for name in ORCHESTRATOR_PARAMS:
+    for name in ORCHESTRATOR_PARAMS | verbatim:
         properties.pop(name, None)
     schema["type"] = "object"
     schema["properties"] = properties
@@ -394,6 +431,7 @@ def begin_user_turn(
     messages = state.setdefault("llm_messages", [])
     messages.append({"role": "user", "content": content or "(empty message)"})
     state["llm_messages"] = trim_transcript(messages)
+    _note_user_words(state, query)
     state["pending_calls"] = []
     state["pending_note"] = ""
     state["turn_tool_results"] = {}
@@ -632,6 +670,34 @@ def _normalize_questions(raw: Any) -> List[Dict[str, Any]]:
     return questions
 
 
+def _note_user_words(state: Dict[str, Any], text: Any) -> None:
+    """Add one piece of the user's own wording to the request in progress."""
+    words = str(text or "").strip()
+    parts = list(state.get(USER_REQUEST_PARTS) or [])
+    if not words or (parts and parts[-1] == words):
+        return
+    state[USER_REQUEST_PARTS] = [*parts, words][-_MAX_REQUEST_PARTS:]
+
+
+def user_request_text(state: Mapping[str, Any]) -> str:
+    """The user's words for the request in progress, oldest first."""
+    text = "\n".join(str(part) for part in state.get(USER_REQUEST_PARTS) or [])
+    return text[-_MAX_REQUEST_CHARS:].strip()
+
+
+def _verbatim_user_fields(spec: ToolSpec, state: Mapping[str, Any]) -> Dict[str, str]:
+    """Top-level fields of ``spec`` that take the user's own words, filled in."""
+    text = user_request_text(state)
+    properties = spec.input_schema.get("properties") if isinstance(spec.input_schema, dict) else None
+    if not text or not isinstance(properties, dict):
+        return {}
+    return {
+        name: text
+        for name, prop in properties.items()
+        if isinstance(prop, dict) and prop.get(VERBATIM_SOURCE_KEY) == VERBATIM_USER_MESSAGE
+    }
+
+
 def _new_call(
     tool_call: Dict[str, Any],
     catalog: Mapping[str, ToolSpec],
@@ -666,13 +732,19 @@ def _new_call(
         call["questions"] = questions
         call["status"] = "needs_answer"
         return call
+    verbatim: Dict[str, str] = {}
     if spec.kind == "skill":
         call["arguments"] = normalize_params_for_input_schema(call["arguments"], spec.input_schema)
+        verbatim = _verbatim_user_fields(spec, state)
+        call["arguments"].update(verbatim)
     problem = _validation_problem(spec, call["arguments"], state)
     if problem:
         _finish(call, {"status": "failed", "error": problem})
         return call
     call["input_sources"] = {key: source for key in call["arguments"]}
+    call["input_sources"].update({key: "user" for key in verbatim})
+    if verbatim:
+        call["verbatim_fields"] = sorted(verbatim)
     _refresh_status(call, spec)
     return call
 
@@ -743,6 +815,8 @@ def apply_answers(
                 if question["field"] in answers
             }
             if provided:
+                labels = {q["field"]: q.get("question") or q["field"] for q in call.get("questions") or []}
+                _note_user_words(state, "\n".join(f"{labels[field]} {value}" for field, value in provided.items()))
                 _finish(call, {"status": "answered", "answers": provided})
         elif status == "waiting_input":
             provided: Dict[str, Any] = {}
@@ -770,6 +844,7 @@ def apply_reply(
     received_files: Optional[List[Dict[str, Any]]] = None,
 ) -> None:
     """A free-text reply answers ask_user and supersedes every other unfinished call."""
+    _note_user_words(state, text)
     text += upload_note(state, uploaded_artifact_ids, received_files)
     for call in state.get("pending_calls") or []:
         if call["status"] == "done":
@@ -946,6 +1021,9 @@ async def _settle_skill_item(
         _finish(call, {"status": "failed", "error": str(item["error"])})
         return
     result = item.get("result")
+    if call.get("verbatim_fields"):
+        # The request was delivered; the next one starts from the user's next words.
+        state[USER_REQUEST_PARTS] = []
     _record_result(state, _result_key(state, skill_id), call["arguments"], result)
     payload = _compact_result(result, "succeeded")
     # Inputs supplied after the call was made are part of what ran; the model
@@ -1321,11 +1399,13 @@ async def _advance(
         )
         # The absence of tool calls is the only terminator (never finish_reason).
         if not response.tool_calls:
-            answer = response.text.strip()
+            answer, note = split_orchestrator_note(response.text or "")
             if not answer:
                 return LoopOutcome("error", message="The orchestrator returned an empty answer.")
+            if note:
+                logger.info("Orchestrator note for %s: %s", conversation_id, note)
             state["llm_messages"].append(assistant_message(response))
-            return LoopOutcome("final", message=answer)
+            return LoopOutcome("final", message=answer, note=note)
         records = [_call_record(tool_call) for tool_call in response.tool_calls]
         message = assistant_message(response)
         stored_calls = message.get("tool_calls") or []

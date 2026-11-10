@@ -178,6 +178,9 @@ def _respond(conv_id: str, state: AgentState, outcome: agent_loop.LoopOutcome) -
 
     tool_results = dict(state.get("turn_tool_results") or {})
     entry: Dict[str, Any] = {"role": "assistant", "content": outcome.message}
+    if outcome.note:
+        # For developers (/notes); the backend sends only role and content to the UI.
+        entry["orchestrator_note"] = outcome.note
     if tool_results:
         entry.update(
             type="final_report",

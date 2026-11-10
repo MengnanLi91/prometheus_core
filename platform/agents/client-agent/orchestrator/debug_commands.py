@@ -30,6 +30,7 @@ SLASH_COMMAND_DESCRIPTIONS = {
     "artifacts": "List artifacts registered for this conversation.",
     "forget": "Forget stored OSTI knowledge facts.",
     "help": "List all available commands.",
+    "notes": "Show the orchestrator's source notes for this conversation's answers.",
     "tasks": "List tasks, or inspect one with /tasks <id>.",
     "workflows": "List all currently registered workflows.",
 }
@@ -229,6 +230,34 @@ def _format_artifact_size(size_bytes: Any) -> Optional[str]:
     if size < 1024 * 1024:
         return f"{size / 1024:.1f} KB"
     return f"{size / (1024 * 1024):.1f} MB"
+
+
+def _collect_orchestrator_notes(existing_state: Optional[Dict[str, Any]]) -> List[Dict[str, str]]:
+    """Each answer's developer note with the user message it answered, oldest first."""
+    notes: List[Dict[str, str]] = []
+    question = ""
+    for entry in (existing_state or {}).get("conversation_history") or []:
+        if entry.get("role") == "user":
+            question = str(entry.get("content") or "")
+        elif entry.get("orchestrator_note"):
+            notes.append(
+                {
+                    "question": question,
+                    "note": str(entry["orchestrator_note"]),
+                    "timestamp": str(entry.get("timestamp") or ""),
+                }
+            )
+    return notes
+
+
+def _format_notes_debug_response(notes: List[Dict[str, str]]) -> str:
+    if not notes:
+        return "No orchestrator notes in this conversation."
+    lines = [f"Orchestrator notes ({len(notes)})"]
+    for item in notes:
+        question = " ".join(item["question"].split())
+        lines += ["", f"**{question[:120] or '(no message)'}**", item["note"]]
+    return "\n".join(lines)
 
 
 def _format_artifacts_debug_response(artifacts: List[Dict[str, Any]]) -> str:
@@ -510,6 +539,18 @@ async def _maybe_handle_slash_command(
                 "slash_command": "artifacts",
                 "artifacts": artifacts,
             },
+        )
+
+    if command == "notes":
+        notes = _collect_orchestrator_notes(existing_state)
+        message = _format_notes_debug_response(notes)
+        runtime.store_status_update(conv_id, "Handled /notes slash command.", final=True)
+        return ConversationResponse(
+            conversation_id=conv_id,
+            status="answer",
+            message=message,
+            response_text=message,
+            message_metadata={"slash_command": "notes", "notes": notes},
         )
 
     if command == "forget":

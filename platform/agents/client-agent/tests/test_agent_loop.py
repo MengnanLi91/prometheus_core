@@ -1637,3 +1637,201 @@ def test_early_store_failure_keeps_the_turn(harness, monkeypatch, caplog) -> Non
     ]
     warnings = [r for r in caplog.records if r.name == "orchestrator.chat_flow" and r.levelno == logging.WARNING]
     assert any(CONV in r.getMessage() for r in warnings), "no warning names the conversation id"
+
+
+DOCS_QA = _capability(
+    "docs_qa",
+    {
+        "type": "object",
+        "properties": {
+            "message": {
+                "type": "string",
+                "description": "The user's question.",
+                agent_loop.VERBATIM_SOURCE_KEY: agent_loop.VERBATIM_USER_MESSAGE,
+            },
+            "topic": {"type": "string"},
+        },
+        "required": ["message"],
+    },
+)
+
+
+def test_verbatim_field_is_hidden_from_the_model() -> None:
+    parameters = agent_loop._skill_spec("docs_qa", DOCS_QA).parameters
+    assert set(parameters["properties"]) == {"topic"}
+    assert "required" not in parameters
+
+
+def test_verbatim_field_receives_the_users_message_not_the_models(harness) -> None:
+    harness.capabilities.append(DOCS_QA)
+    harness.results.update(docs_qa=lambda params: {"result": {"answer": "SMP is the default."}})
+    rewritten = "Explain MOOSE preconditioners in detail, with example syntax."
+    harness.script(
+        [
+            reply(calls=[tool_call("docs_qa", {"message": rewritten, "topic": "solvers"}, "c1")]),
+            reply("SMP is the default."),
+        ]
+    )
+
+    response = send(query="tell me about MOOSE preconditioner")
+
+    assert response.status == "completed"
+    params = harness.invocations[0][1]
+    assert params["message"] == "tell me about MOOSE preconditioner"
+    assert params["topic"] == "solvers"
+    assert params["_input_sources"] == {"message": "user", "topic": "model"}
+
+
+def test_unmarked_fields_keep_the_models_arguments(harness) -> None:
+    harness.results.update(create_svg_artifact=lambda params: {"result": {"ok": True}})
+    harness.script([reply(calls=[tool_call("create_svg_artifact", {"word": "Hi"}, "c1")]), reply("Done.")])
+
+    send(query="make an svg that says hi please")
+
+    assert harness.invocations[0][1]["word"] == "Hi"
+
+
+def test_verbatim_field_gets_the_whole_request_across_turns_and_forms(harness) -> None:
+    # Replays a real conversation: the request is spread over two typed
+    # messages, a "yes", and an ask_user form. The skill must receive all of
+    # the user's words, not just "yes", and none of the model's rewording.
+    harness.capabilities.append(DOCS_QA)
+    harness.results.update(docs_qa=lambda params: {"result": {"answer": "Here is the input."}})
+    form = {
+        "questions": [
+            {"field": "dimension", "question": "Is the problem 2D or 3D?", "type": "select", "options": ["2D", "3D"]},
+            {"field": "problem_description", "question": "Describe the case:", "type": "text"},
+        ]
+    }
+    harness.script(
+        [
+            reply("Which module do you want to use?"),
+            reply("Shall I generate a Navier-Stokes input?"),
+            reply(calls=[tool_call("ask_user", form, "c1")]),
+            reply(calls=[tool_call("docs_qa", {"message": "Generate an INSFV channel flow input."}, "c2")]),
+            reply("Here is the input."),
+        ]
+    )
+
+    send(query="Generate a MOOSE flow input")
+    send(query="Navier Stokes module")
+    asked = send(query="yes")
+    assert asked.status == "needs_info"
+    done = send(followup_answers={"dimension": "2D", "problem_description": "2D channel flow with no-slip walls"})
+
+    assert done.status == "completed"
+    message = harness.invocations[0][1]["message"]
+    assert message == (
+        "Generate a MOOSE flow input\n"
+        "Navier Stokes module\n"
+        "yes\n"
+        "Is the problem 2D or 3D? 2D\n"
+        "Describe the case: 2D channel flow with no-slip walls"
+    )
+    # Delivered: the next request starts from the user's next words.
+    assert harness.store[CONV][agent_loop.USER_REQUEST_PARTS] == []
+
+
+def test_failed_verbatim_call_keeps_the_request_for_the_retry(harness) -> None:
+    harness.capabilities.append(DOCS_QA)
+    outcomes = iter([{"error": "backend down"}, {"result": {"answer": "ok"}}])
+    harness.results.update(docs_qa=lambda params: next(outcomes))
+    harness.script(
+        [
+            reply(calls=[tool_call("docs_qa", {"message": "x"}, "c1")]),
+            reply("It failed."),
+            reply(calls=[tool_call("docs_qa", {"message": "x"}, "c2")]),
+            reply("Done."),
+        ]
+    )
+
+    send(query="2D channel flow with no-slip walls")
+    send(query="try again")
+
+    first, retry = harness.invocations[0][1]["message"], harness.invocations[1][1]["message"]
+    assert first == "2D channel flow with no-slip walls"
+    assert retry == "2D channel flow with no-slip walls\ntry again"
+
+
+def test_user_request_text_is_bounded() -> None:
+    state: Dict[str, Any] = {}
+    for i in range(30):
+        agent_loop._note_user_words(state, f"part {i}")
+    agent_loop._note_user_words(state, "part 29")  # repeated message is not stored twice
+    parts = state[agent_loop.USER_REQUEST_PARTS]
+    assert parts == [f"part {i}" for i in range(18, 30)]
+    assert agent_loop.user_request_text({agent_loop.USER_REQUEST_PARTS: ["x" * 9000]}) == "x" * 6000
+
+
+def test_source_note_is_cut_from_the_answer_and_kept_on_the_turn(harness) -> None:
+    # The model corrects a skill result. The user sees only the corrected answer;
+    # what was corrected stays on the turn for developers (/notes).
+    harness.capabilities.append(DOCS_QA)
+    harness.results.update(docs_qa=lambda params: {"result": {"answer": "MOOSE has no preconditioner objects."}})
+    harness.script(
+        [
+            reply(calls=[tool_call("docs_qa", {}, "c1")]),
+            reply(
+                "MOOSE builds the preconditioning matrix in a [Preconditioning] block, for example SMP.\n\n"
+                "<orchestrator_note>docs_qa said MOOSE has no preconditioner objects; "
+                "added SMP, FDP, PBP and FSP from general knowledge.</orchestrator_note>"
+            ),
+        ]
+    )
+
+    response = send(query="tell me about MOOSE preconditioner")
+
+    assert response.status == "completed"
+    assert response.message == "MOOSE builds the preconditioning matrix in a [Preconditioning] block, for example SMP."
+    assert "orchestrator_note" not in response.message
+    entry = harness.store[CONV]["conversation_history"][-1]
+    assert entry["content"] == response.message
+    assert entry["orchestrator_note"].startswith("docs_qa said MOOSE has no preconditioner objects")
+
+    notes = send(query="/notes")
+
+    assert notes.status == "answer"
+    assert "Orchestrator notes (1)" in notes.message
+    assert "**tell me about MOOSE preconditioner**" in notes.message
+    assert "added SMP, FDP, PBP and FSP" in notes.message
+
+
+def test_answer_without_a_note_is_unchanged(harness) -> None:
+    harness.script([reply("Hello.")])
+
+    assert send(query="hi").message == "Hello."
+    assert "orchestrator_note" not in harness.store[CONV]["conversation_history"][-1]
+    assert send(query="/notes").message == "No orchestrator notes in this conversation."
+
+
+@pytest.mark.parametrize(
+    ("text", "answer", "note"),
+    [
+        ("A.\n<orchestrator_note>n1</orchestrator_note>", "A.", "n1"),
+        ("<ORCHESTRATOR_NOTE> n1 </ORCHESTRATOR_NOTE>\nA.", "A.", "n1"),
+        ("A.\n<orchestrator_note>unclosed", "A.", "unclosed"),
+        (
+            "A.<orchestrator_note>n1</orchestrator_note> B.<orchestrator_note>n2</orchestrator_note>",
+            "A. B.",
+            "n1\n\nn2",
+        ),
+        ("<orchestrator_note>only a note</orchestrator_note>", "", "only a note"),
+    ],
+)
+def test_split_orchestrator_note(text: str, answer: str, note: str) -> None:
+    assert agent_loop.split_orchestrator_note(text) == (answer, note)
+
+
+def test_an_answer_that_is_only_a_note_is_an_error(harness) -> None:
+    harness.script([reply("<orchestrator_note>nothing for the user</orchestrator_note>")])
+
+    response = send(query="hi")
+
+    assert response.status == "error"
+    assert "orchestrator_note" not in response.message
+
+
+def test_final_answer_rules_keep_internals_out_of_the_answer() -> None:
+    prompt = agent_loop.SYSTEM_PROMPT_TEMPLATE
+    assert "Never mention skills, tools, retrieval" in prompt
+    assert "<orchestrator_note>" in prompt

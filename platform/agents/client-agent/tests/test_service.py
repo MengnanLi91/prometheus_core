@@ -353,14 +353,14 @@ def test_help_slash_command_lists_builtin_and_workflow_commands(monkeypatch) -> 
     response = asyncio.run(chat_flow.chat(ConversationRequest(query="/help", conversation_id="conv-help")))
 
     assert response.status == "answer"
-    assert "Available commands (7)" in response.message
-    for command in ("agents", "artifacts", "forget", "help", "tasks", "workflows"):
+    assert "Available commands (8)" in response.message
+    for command in ("agents", "artifacts", "forget", "help", "notes", "tasks", "workflows"):
         assert f"`/{command}`" in response.message
     assert "Workflow commands (1)" in response.message
     assert "`/thermal_quick_check`" in response.message
     assert response.message_metadata == {
         "slash_command": "help",
-        "supported_commands": ["agents", "artifacts", "forget", "help", "tasks", "workflows"],
+        "supported_commands": ["agents", "artifacts", "forget", "help", "notes", "tasks", "workflows"],
         "workflow_commands": [
             {
                 "command": "thermal_quick_check",

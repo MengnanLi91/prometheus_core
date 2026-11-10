@@ -89,10 +89,23 @@ submodule is ever required (air-gapped builds), put it outside `agents/`, e.g.
    does not load in the container, which only degrades input parsing.
 4. **Vector database**: warmup pulls MOOSEnger's pre-built one from its ORAS
    registry when `MOOSENGER_REGISTRY_USERNAME/PASSWORD` are set, otherwise copy
-   `vector_data/` into the `moosenger-workspace` volume once.
-5. An **OpenAI-compatible LLM endpoint** for MOOSEnger's own client (defaults
+   `vector_data/` into the `moosenger-workspace` volume once, or bind a copy
+   from the host with `MOOSENGER_VECTOR_HOST_DIR` (see
+   [Knowledge base](#knowledge-base)). Use the same one as the standalone
+   MOOSEnger you compare against: vector databases built at different times
+   hold different documents and rank answers differently.
+5. **Knowledge base** (recommended): the output of `moosenger knowledge sync`
+   (`raw/`, `registry/`, `compiled/`, `graph/`, `state/`), i.e. the
+   `knowledge.layout` of a standalone `.moosenger.yaml`. Without it
+   `knowledge.brain_search` has only its vector layer: no Object Registry, so
+   no exact hits for MOOSE objects such as `SMP` or `FieldSplitPreconditioner`,
+   and no compiled pages or link graph. Answers can then miss what the docs
+   say. The startup log says `No knowledge base at ...` when it is missing. Set
+   `MOOSENGER_KNOWLEDGE_HOST_DIR` in `platform/.env` and the Makefile binds it
+   read-only at `/knowledge` (see [Knowledge base](#knowledge-base)).
+6. An **OpenAI-compatible LLM endpoint** for MOOSEnger's own client (defaults
    to INL LiteLLM, i.e. the same key as the platform's `inl_litellm` profile).
-6. **DeepLynx credentials**, as for every agent: the SDK refuses to start
+7. **DeepLynx credentials**, as for every agent: the SDK refuses to start
    without `DEEPLYNX_JWT_TOKEN` (or `DEEPLYNX_KEY` + `DEEPLYNX_SECRET`),
    `DEEPLYNX_ORG_ID` and `DEEPLYNX_PROJECT_ID`.
 
@@ -143,6 +156,46 @@ curl -s -H "Authorization: Bearer $AGENT_SECRET" localhost:8600/v1/agents | pyth
 The healthcheck has a 180 s `start_period` because startup validation and
 warmup run before `/healthz` answers.
 
+## Knowledge base
+
+Point the agent at a knowledge base on the host in `platform/.env`:
+
+```dotenv
+MOOSENGER_KNOWLEDGE_HOST_DIR=/abs/path/to/.moosenger_knowledge
+```
+
+With `OPTIONAL_AGENTS=true` and that set, every `make` start target adds
+`docker-compose.knowledge.yml`, which binds the directory read-only at
+`/knowledge` and sets `MOOSENGER_KNOWLEDGE_DIR=/knowledge`. Leave
+`MOOSENGER_KNOWLEDGE_DIR` unset in `.env`. Recreate the container to pick it up
+(`make up`; `make restart` keeps the old mounts). To check:
+
+```bash
+make logs SERVICE=moosenger-agent | grep -i "knowledge base"   # no "No knowledge base at"
+```
+
+The agent only reads the knowledge base; rebuild it on the host with
+`moosenger knowledge sync`.
+
+The vector database is bound the same way, from `MOOSENGER_VECTOR_HOST_DIR`:
+`docker-compose.vector.yml` binds it at `/vector_db` and sets
+`MOOSENGER_VECTOR_DIR=/vector_db`. Point it at a whole `vector_data/`
+directory: `chroma.sqlite3`, its index segment and `moose_documents/`, the
+parent-document store retrieval reads. ChromaDB cannot open a read-only
+database, so this bind is read-write, and the container's ChromaDB may differ
+from your standalone one. Bind a copy instead of the directory a standalone
+MOOSEnger uses. On macOS an APFS clone costs no disk until a file changes:
+
+```bash
+SRC=/abs/path/to/vector_data          # the one standalone MOOSEnger uses
+DST=/abs/path/to/vector_data_platform
+mkdir "$DST" && cp -c "$SRC/chroma.sqlite3" "$DST/"
+for d in "$SRC"/*; do [ -d "$d" ] && cp -cR "$d" "$DST/"; done
+```
+
+Clone it while nothing is writing to it, and clone again after you re-sync the
+standalone database.
+
 ## Development
 
 ```bash
@@ -165,8 +218,10 @@ repository under `tests/a2a/`, next to the code.
 | `MOOSENGER_CONFIG` | `/app/config/moosenger.yaml` | Template rendered at startup; or a hand-written file with `MOOSENGER_RENDER_CONFIG=false` |
 | `MOOSENGER_API_KEY` | (empty → `LLM_API_KEY`) | Key for MOOSEnger's LLM endpoint, exported as `OPENAI_API_KEY` |
 | `MOOSENGER_LLM_HOST` / `MOOSENGER_MODEL` / `MOOSENGER_EMBEDDINGS` | INL LiteLLM values | MOOSEnger `core` / `rag` settings |
-| `MOOSENGER_KNOWLEDGE_DIR` | `/workspace/.moosenger_knowledge` | The one path for MOOSE knowledge: the knowledge base and, by default, its vector database in `vector_data/`. Bind a host directory in `docker-compose.override.yml`; read-write if the vector database is inside it |
-| `MOOSENGER_VECTOR_DIR` | (empty = inside the knowledge base) | Optional: the vector database somewhere else, e.g. a host directory bound read-write |
+| `MOOSENGER_KNOWLEDGE_HOST_DIR` | (empty = none) | Host knowledge base; the Makefile binds it read-only at `/knowledge` ([Knowledge base](#knowledge-base)) |
+| `MOOSENGER_KNOWLEDGE_DIR` | `/workspace/.moosenger_knowledge`, or `/knowledge` with `MOOSENGER_KNOWLEDGE_HOST_DIR` | The one path for MOOSE knowledge in the container: the knowledge base and, by default, its vector database in `vector_data/`. Set it only for a knowledge base you bind yourself in `docker-compose.override.yml` |
+| `MOOSENGER_VECTOR_HOST_DIR` | (empty = none) | Host `vector_data/` copy; the Makefile binds it read-write at `/vector_db` ([Knowledge base](#knowledge-base)) |
+| `MOOSENGER_VECTOR_DIR` | (empty = inside the knowledge base), or `/vector_db` with `MOOSENGER_VECTOR_HOST_DIR` | Optional: the vector database somewhere else. Set it only for a database you bind yourself |
 | `MOOSENGER_MOOSE_REPO` | (empty = none) | MOOSE checkout in the container (`/moose` once bound): example lookup, example catalog, pyhit |
 | `MOOSE_MCP_URL` | `http://moose-mcp:8000/mcp` | MOOSE execution server |
 | `MOOSE_MCP_AUTH_KEY` | (empty = no auth) | Shared secret with that server |
@@ -181,8 +236,11 @@ repository under `tests/a2a/`, next to the code.
 
 * Progress inside a MOOSEnger turn is not streamed (the runtime returns only
   when the turn ends); the base class heartbeat keeps the connection alive.
-* Only text outputs (`.i`, logs) are published; Exodus/CSV results stay in the
-  MCP server's run directory.
+* Run outputs are published only with a MOOSEnger checkout that uploads them
+  (commit `acec75134d` or later): after a run, the input, log, Exodus and CSV
+  files and a zip of the run are stored in DeepLynx and appear as side-panel
+  artifacts, where Exodus opens in the mesh viewer. Files over 50 MB are not
+  uploaded; they stay in the MCP server's run directory.
 * The agent is not in the `platform-agent` CI matrix: that job installs only
   the SDK and this directory's lock, so the smoke tests would skip.
 * MOOSEnger's LLM settings are configured separately from the platform's

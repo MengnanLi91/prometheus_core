@@ -195,7 +195,8 @@ One model covers every `status`; only the status-relevant fields are populated.
       "json_body": null,
       "render_hint": "mesh",
       "producer_agent_id": "thermal-agent",
-      "created_at": "2026-08-10T12:00:00Z"
+      "created_at": "2026-08-10T12:00:00Z",
+      "display": "inline"
     }
   ],
   "recommended_materials": ["SS316", "SS347"],
@@ -254,6 +255,21 @@ lockstep). Note two folds: SVG (`image/svg+xml`) classifies as `image`, and the
 The classifier lives in `classify_render_hint` / `to_artifact_meta`
 (`app/services/artifacts.py`); the frontend may override using the raw
 `mime_type` / `json_type` / `tags` fields.
+
+### Artifact `display`
+
+`ArtifactMeta.display` says *where* the frontend shows an artifact; `render_hint`
+still says *how*. It mirrors the `ArtifactDisplay` `Literal` in `app/contract.py`.
+
+| `display` | where it appears |
+|---|---|
+| `inline` (default) | in the assistant message body, and in the side artifact panel |
+| `panel` | only in the side artifact panel; a newly arrived one opens there |
+
+The producing agent chooses it with `metadata.display` on the artifact
+(`to_artifact_meta` reads it); a missing or unrecognized value is `inline`, so
+an agent that never sets it renders exactly as before. Use `panel` for large
+results the reply only names, such as a generated input file or a run archive.
 
 For `reference` artifacts, `ArtifactMeta.citation` carries `{source, section, page}`
 (lifted from the raw artifact `metadata`) so the frontend can render a citation card:

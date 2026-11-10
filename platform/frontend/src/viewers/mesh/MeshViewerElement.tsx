@@ -31,11 +31,12 @@
  * it was ported; swap once confirmed (Recoil atom / DaisyUI data-theme).
  */
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Maximize2, Minimize2, RotateCcw } from "lucide-react";
 import "./mesh.css";
 import MeshViewer, { MeshViewerHandles } from "./MeshViewer";
 import MeshViewerControls, { VariableOption } from "./MeshViewerControls";
+import { controlsStartOpen } from "./controlsLayout";
 import type { ColorPreset, PickResult } from "./MeshViewerEngine";
 import type { ViewerProps } from "@/lib/elements/elements";
 
@@ -111,6 +112,13 @@ export function MeshViewerElement({ element }: ViewerProps) {
   const [pickedInfo, setPickedInfo] = useState<PickResult | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Measured once, before the first paint, so the controls start collapsed in a
+  // narrow viewer (the side panel) without flashing open first.
+  const [controlsOpenAtStart, setControlsOpenAtStart] = useState<boolean | null>(null);
+  useLayoutEffect(() => {
+    setControlsOpenAtStart(controlsStartOpen(viewerContainerRef.current?.clientWidth ?? 0));
+  }, []);
 
   // Theme → engine background/edge color
   useEffect(() => {
@@ -242,8 +250,9 @@ export function MeshViewerElement({ element }: ViewerProps) {
             onPick={setPickedInfo}
           />
 
-          {showControls && (
+          {showControls && controlsOpenAtStart !== null && (
             <MeshViewerControls
+              defaultOpen={controlsOpenAtStart}
               numTimesteps={numTimesteps}
               currentTimestep={currentTimestep}
               onTimestepChange={(i) => { setIsPlaying(false); setCurrentTimestep(i); }}

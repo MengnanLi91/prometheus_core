@@ -96,6 +96,28 @@ ifeq ($(OPTIONAL_AGENTS),true)
 AGENT_COMPOSE_FILES += $(shell find -L agents/optional -mindepth 2 -maxdepth 2 -name docker-compose.yml 2>/dev/null | sort)
 endif
 
+# MOOSEnger knowledge from the host (with OPTIONAL_AGENTS=true); see
+# agents/optional/moosenger-agent/README.md:
+#   MOOSENGER_KNOWLEDGE_HOST_DIR  a knowledge base built by `moosenger knowledge
+#                                 sync`, bound read-only. Unset, the agent has
+#                                 none and searches only its vector database.
+#   MOOSENGER_VECTOR_HOST_DIR     a vector_data/ directory, bound read-write
+#                                 (ChromaDB needs it). Use a copy, not the one
+#                                 a standalone MOOSEnger is using.
+MOOSENGER_KNOWLEDGE_HOST_DIR ?=
+MOOSENGER_VECTOR_HOST_DIR ?=
+export MOOSENGER_KNOWLEDGE_HOST_DIR MOOSENGER_VECTOR_HOST_DIR
+MOOSENGER_DIR := agents/optional/moosenger-agent
+AGENT_EXTRA_COMPOSE_FILES :=
+ifeq ($(OPTIONAL_AGENTS),true)
+ifneq ($(strip $(MOOSENGER_KNOWLEDGE_HOST_DIR)),)
+AGENT_EXTRA_COMPOSE_FILES += $(addprefix -f ,$(wildcard $(MOOSENGER_DIR)/docker-compose.knowledge.yml))
+endif
+ifneq ($(strip $(MOOSENGER_VECTOR_HOST_DIR)),)
+AGENT_EXTRA_COMPOSE_FILES += $(addprefix -f ,$(wildcard $(MOOSENGER_DIR)/docker-compose.vector.yml))
+endif
+endif
+
 # Build the -f flags for docker compose.
 COMPOSE_FILES := -f $(COMPOSE_BASE)
 ifeq ($(PROMETHEUS_SYSTEM_TESTING),true)
@@ -104,6 +126,7 @@ endif
 ifneq ($(AGENT_COMPOSE_FILES),)
 COMPOSE_FILES += -f $(COMPOSE_AGENTS)
 endif
+COMPOSE_FILES += $(AGENT_EXTRA_COMPOSE_FILES)
 ifeq ($(LOCAL_DEEPLYNX),true)
 COMPOSE_FILES += -f docker-compose.deeplynx.yml
 endif
@@ -119,6 +142,7 @@ COMPOSE_FILES_NG += -f docker-compose.system-test.yml
 endif
 ifneq ($(wildcard $(COMPOSE_AGENTS)),)
 COMPOSE_FILES_NG += -f $(COMPOSE_AGENTS)
+COMPOSE_FILES_NG += $(AGENT_EXTRA_COMPOSE_FILES)
 endif
 ifeq ($(LOCAL_DEEPLYNX),true)
 COMPOSE_FILES_NG += -f docker-compose.deeplynx.yml
